@@ -24,6 +24,14 @@ verify the exact hardware before proceeding.
 | Mainline snapshot | `master` | Applies the repository AN8855 patch set and locks to `patches/VERIFIED_COMMIT`. |
 | OpenWrt 24.10 | `openwrt-24.10` | Uses the upstream AN8855 target without the repository patch set. |
 
+> **Note:** `master` builds are OpenWrt snapshots by design. After flashing,
+> LuCI and `/etc/openwrt_release` report `SNAPSHOT rXXXX` instead of a stable
+> version number — this is expected, not a flash failure (see issue #4).
+> Snapshot is the default because the AN8855 switch support and related
+> Filogic fixes are newest there; the `openwrt-24.10` branch is older but
+> reports a stable version string. See the
+> [development guide](docs/development/guide.md) for the tradeoff.
+
 The build includes Tailscale, LuCI, `luci-compat`, networking and diagnostic
 packages, WireGuard, QoS modules, zram, and a curated filesystem/module set.
 OpenClash is built separately as an APK.

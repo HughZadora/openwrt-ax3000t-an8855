@@ -141,6 +141,16 @@ bash setup.sh --branch openwrt-24.10 build
 - `main`: clones main + locks `VERIFIED_COMMIT` + applies AN8855 patches
 - `openwrt-24.10`: clones 24.10 branch, **skips commit lock & patches** (official target exists)
 
+**SNAPSHOT vs stable (see issue #4)**:
+- `main` builds always report `SNAPSHOT rXXXX` in LuCI / `/etc/openwrt_release`.
+  That string comes from the upstream branch and is expected, not a flash failure.
+- Snapshot is the default because the AN8855 switch support and related Filogic
+  fixes are newest on `main`; the `openwrt-24.10` branch reports a stable version
+  string but carries an older kernel and package set.
+- Snapshot caveat: the package feed tracks a rolling snapshot, so `apk update`
+  results drift over time; keep the firmware and the separately built OpenClash
+  APK from the same build.
+
 ### Custom Feed / Package
 
 ```bash
