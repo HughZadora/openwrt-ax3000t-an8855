@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       branch:
-        description: 'Repo branch to build (master = upstream main, or openwrt-24.10)'
+        description: 'Repo branch (master = upstream main, or openwrt-24.10)'
         required: false
         default: 'master'
         type: choice
@@ -21,7 +21,6 @@ on:
 env:
   OPENWRT_DIR: ${{ github.workspace }}/openwrt-ax3000t
   REPO_PATCH_DIR: ${{ github.workspace }}/patches
-  SCRIPT_DIR: ${{ github.workspace }}/scripts
   OPENCLASH_URL: https://github.com/vernesong/OpenClash.git
 
 jobs:
@@ -49,29 +48,42 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
-          fetch-depth: 0  # Needed for semantic-release and VERIFIED_COMMIT update
+          # Needed for semantic-release and VERIFIED_COMMIT update
+          fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up build branch
-        if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
+        if: >-
+          github.event_name != 'schedule'
+          && github.event_name != 'workflow_dispatch'
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           # For push, use the triggering branch; for pull_request, use the
           # target (base) branch — github.ref_name is '<pr>/merge' on PRs and
           # is not a valid upstream OpenWrt branch.
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "BUILD_BRANCH=${{ github.base_ref }}" >> $GITHUB_ENV
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            echo "BUILD_BRANCH=$BASE_REF" >> "$GITHUB_ENV"
           else
-            echo "BUILD_BRANCH=${{ github.ref_name }}" >> $GITHUB_ENV
+            echo "BUILD_BRANCH=$REF_NAME" >> "$GITHUB_ENV"
           fi
 
       - name: Set up build branch (scheduled/dispatch)
-        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        if: >-
+          github.event_name == 'schedule'
+          || github.event_name == 'workflow_dispatch'
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_BRANCH: ${{ github.event.inputs.branch }}
+          MATRIX_BRANCH: ${{ matrix.branch }}
         run: |
           # For scheduled/dispatch, use matrix or input
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "BUILD_BRANCH=${{ github.event.inputs.branch }}" >> $GITHUB_ENV
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "BUILD_BRANCH=$INPUT_BRANCH" >> "$GITHUB_ENV"
           else
-            echo "BUILD_BRANCH=${{ matrix.branch }}" >> $GITHUB_ENV
+            echo "BUILD_BRANCH=$MATRIX_BRANCH" >> "$GITHUB_ENV"
           fi
 
       - name: Install dependencies
@@ -89,244 +101,64 @@ jobs:
           ccache --set compression=true
           echo "/usr/lib/ccache" >> $GITHUB_PATH
 
-      - name: Clone OpenWrt
+      - name: Prepare OpenWrt source
+        env:
+          # Contexts go through env (not interpolated into the shell) so the
+          # run step stays free of template injection.
+          VERIFIED_COMMIT_LOCK: ${{ matrix.verified_commit_lock }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          # BUILD_BRANCH is this repo's branch name. Repo `master` tracks
-          # upstream OpenWrt `main` (upstream HEAD; `master` there is only
-          # a non-canonical alias), so resolve explicitly instead of
-          # cloning `$BUILD_BRANCH` verbatim from upstream.
-          UPSTREAM_BRANCH="$BUILD_BRANCH"
-          if [ "$BUILD_BRANCH" = "master" ]; then
-            UPSTREAM_BRANCH="main"
-          fi
-          echo "Repo branch $BUILD_BRANCH -> upstream branch $UPSTREAM_BRANCH"
-          if [ ! -d "$OPENWRT_DIR" ]; then
-            git clone --depth 1 --branch "$UPSTREAM_BRANCH" --single-branch \
-              https://git.openwrt.org/openwrt/openwrt.git "$OPENWRT_DIR"
-          fi
-          cd "$OPENWRT_DIR"
-
-      - name: Lock to VERIFIED_COMMIT (master only)
-        if: ${{ matrix.verified_commit_lock && github.event_name != 'pull_request' }}
-        run: |
-          cd "$OPENWRT_DIR"
-          if [ -f "$REPO_PATCH_DIR/VERIFIED_COMMIT" ]; then
-            OPENWRT_COMMIT=$(grep -vE '^\s*(#|$)' "$REPO_PATCH_DIR/VERIFIED_COMMIT" | head -n1 | tr -d '[:space:]' || true)
-            if [ -n "$OPENWRT_COMMIT" ]; then
-              echo "Locking to VERIFIED_COMMIT: $OPENWRT_COMMIT"
-              git fetch --depth 1 origin "$OPENWRT_COMMIT" || { echo "Failed to fetch commit $OPENWRT_COMMIT"; exit 1; }
-              git checkout --force "$OPENWRT_COMMIT"
-            else
-              echo "⚠️ VERIFIED_COMMIT empty, following main latest (patches may drift)"
-            fi
+          # BUILD_BRANCH is this repo's branch name
+          # (repo master -> upstream main).
+          # Cloning, VERIFIED_COMMIT locking and patching live in
+          # scripts/build/, shared with local `bash setup.sh`.
+          if [ "$VERIFIED_COMMIT_LOCK" = "true" ] \
+             && [ "$EVENT_NAME" != "pull_request" ]; then
+            LOCK=--lock
           else
-            echo "⚠️ VERIFIED_COMMIT file missing, following main latest"
+            LOCK=--no-lock
           fi
+          bash scripts/build/prepare-source.sh \
+            --branch "$BUILD_BRANCH" "$LOCK"
 
       - name: Apply an8855 patches (master only)
         if: ${{ matrix.verified_commit_lock }}
-        run: |
-          cd "$OPENWRT_DIR"
-          if grep -q "Device/xiaomi_mi-router-ax3000t-an8855" target/linux/mediatek/image/filogic.mk; then
-            echo "an8855 target already exists, skipping patch"
-          else
-            echo "Copying DTS..."
-            cp "${REPO_PATCH_DIR}/mt7981b-xiaomi-mi-router-ax3000t-an8855.dts" \
-              target/linux/mediatek/dts/
-            echo "Applying patches (dry-run first)..."
-            for p in "${REPO_PATCH_DIR}"/*.patch; do
-              echo "  dry-run: $(basename "$p")"
-              if ! patch -p1 --forward --dry-run -i "$p"; then
-                echo "❌ Patch $(basename "$p") failed to apply - main has drifted"
-                exit 1
-              fi
-            done
-            for p in "${REPO_PATCH_DIR}"/*.patch; do
-              patch -p1 --forward -i "$p"
-            done
-            # Verify patch applied
-            if ! grep -q "Device/xiaomi_mi-router-ax3000t-an8855" target/linux/mediatek/image/filogic.mk; then
-              echo "❌ Patch verification failed - an8855 target not found"
-              exit 1
-            fi
-            if ! grep -q "xiaomi,mi-router-ax3000t-an8855" target/linux/mediatek/filogic/base-files/lib/upgrade/platform.sh; then
-              echo "❌ Patch verification failed - platform.sh upgrade entry missing"
-              exit 1
-            fi
-            echo "✅ Patches applied and verified"
-          fi
+        run: bash scripts/build/apply-an8855-patches.sh --branch "$BUILD_BRANCH"
 
-      - name: Add OpenClash feed
-        run: |
-          cd "$OPENWRT_DIR"
-          if [ ! -f feeds.conf ]; then
-            cp feeds.conf.default feeds.conf
-          fi
-          if ! grep -q "OpenClash" feeds.conf; then
-            printf '# OpenClash (Clash/Mihomo 客户端)\nsrc-git openclash %s\n' "${OPENCLASH_URL}" >> feeds.conf
-            echo "Added OpenClash feed"
-          fi
-
-      - name: Update and install feeds
-        run: |
-          cd "$OPENWRT_DIR"
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
-
-      - name: Generate defconfig
-        run: |
-          cd "$OPENWRT_DIR"
-          make defconfig
+      - name: Configure feeds
+        run: bash scripts/build/configure-feeds.sh
 
       - name: Configure build (seed .config)
-        run: |
-          cd "$OPENWRT_DIR"
-          # Clear existing config for our symbols
-          for s in \
-            TARGET_mediatek TARGET_mediatek_filogic \
-            TARGET_mediatek_filogic_DEVICE_xiaomi_mi-router-ax3000t-an8855 \
-            VERSIONOPT VERSION_REPO \
-            PACKAGE_luci PACKAGE_luci-ssl LUCI_LANG_zh_Hans \
-            PACKAGE_luci-compat PACKAGE_luci-lua-runtime \
-            PACKAGE_luci-app-nlbwmon \
-            PACKAGE_tailscale PACKAGE_luci-app-tailscale-community \
-            PACKAGE_iptables PACKAGE_iptables-nft PACKAGE_ip6tables-nft \
-            PACKAGE_xtables-legacy PACKAGE_xtables-nft \
-            PACKAGE_iptables-mod-extra PACKAGE_iptables-mod-conntrack-extra \
-            PACKAGE_iptables-mod-ipopt PACKAGE_iptables-mod-iprange \
-            PACKAGE_iptables-mod-filter PACKAGE_iptables-mod-hashlimit \
-            PACKAGE_iptables-mod-nat-extra PACKAGE_iptables-mod-trace \
-            PACKAGE_iptables-mod-u32 PACKAGE_iptables-mod-ipset \
-            PACKAGE_kmod-ipt-core PACKAGE_kmod-ipt-extra \
-            PACKAGE_kmod-ipt-nat PACKAGE_kmod-ipt-nat-extra PACKAGE_kmod-ipt-nat6 \
-            PACKAGE_kmod-ipt-conntrack PACKAGE_kmod-ipt-conntrack-extra \
-            PACKAGE_kmod-ipt-conntrack-label PACKAGE_kmod-ipt-ipopt \
-            PACKAGE_kmod-ipt-iprange PACKAGE_kmod-ipt-filter \
-            PACKAGE_kmod-ipt-hashlimit PACKAGE_kmod-ipt-ipset \
-            PACKAGE_kmod-ipt-offload PACKAGE_kmod-ipt-raw PACKAGE_kmod-ipt-raw6 \
-            PACKAGE_kmod-ipt-u32 PACKAGE_kmod-ipt-physdev \
-            PACKAGE_kmod-ipt-rpfilter PACKAGE_kmod-ipt-socket \
-            PACKAGE_kmod-ipt-tee PACKAGE_kmod-ipt-tproxy \
-            PACKAGE_kmod-ipt-checksum PACKAGE_kmod-ipt-led \
-            PACKAGE_kmod-ipt-nflog PACKAGE_kmod-ipt-nfqueue \
-            PACKAGE_kmod-ipt-cluster PACKAGE_kmod-ipt-ipsec \
-            PACKAGE_kmod-ipt-debug \
-            PACKAGE_kmod-nft-bridge PACKAGE_kmod-nft-compat \
-            PACKAGE_kmod-nft-connlimit PACKAGE_kmod-nft-queue \
-            PACKAGE_kmod-nft-socket PACKAGE_kmod-nft-dup-inet \
-            PACKAGE_kmod-nft-netdev PACKAGE_kmod-nft-xfrm PACKAGE_kmod-nft-arp \
-            PACKAGE_kmod-nf-nat6 PACKAGE_kmod-nf-ipt PACKAGE_kmod-nf-ipt6 \
-            PACKAGE_kmod-nf-ipvs PACKAGE_kmod-nf-ipvs-ftp PACKAGE_kmod-nf-ipvs-sip \
-            PACKAGE_kmod-nf-nathelper \
-            PACKAGE_kmod-nf-nathelper-amanda PACKAGE_kmod-nf-nathelper-broadcast \
-            PACKAGE_kmod-nf-nathelper-extra PACKAGE_kmod-nf-nathelper-h323 \
-            PACKAGE_kmod-nf-nathelper-irc PACKAGE_kmod-nf-nathelper-netbios \
-            PACKAGE_kmod-nf-nathelper-pptp PACKAGE_kmod-nf-nathelper-sane \
-            PACKAGE_kmod-nf-nathelper-irc PACKAGE_kmod-nf-nathelper-tftp \
-            PACKAGE_kmod-nf-nathelper-sip PACKAGE_kmod-nf-nathelper-snmp \
-            PACKAGE_kmod-nf-conncount PACKAGE_kmod-nf-socket \
-            PACKAGE_kmod-nf-dup-inet PACKAGE_kmod-nfnetlink-cthelper \
-            PACKAGE_kmod-nfnetlink-cttimeout PACKAGE_kmod-nfnetlink-log \
-            PACKAGE_kmod-nfnetlink-queue PACKAGE_kmod-gre PACKAGE_kmod-gre6 \
-            PACKAGE_kmod-ipip PACKAGE_kmod-sit PACKAGE_kmod-ip6-tunnel \
-            PACKAGE_kmod-ip-vti PACKAGE_kmod-ip6-vti PACKAGE_kmod-iptunnel4 \
-            PACKAGE_kmod-iptunnel6 PACKAGE_kmod-vxlan PACKAGE_kmod-geneve \
-            PACKAGE_kmod-fou PACKAGE_kmod-fou6 PACKAGE_kmod-udptunnel4 \
-            PACKAGE_kmod-udptunnel6 PACKAGE_kmod-wireguard PACKAGE_kmod-veth \
-            PACKAGE_kmod-l2tp PACKAGE_kmod-l2tp-eth PACKAGE_kmod-l2tp-ip \
-            PACKAGE_kmod-pppol2tp PACKAGE_kmod-ppp-synctty PACKAGE_kmod-bonding \
-            PACKAGE_kmod-team PACKAGE_kmod-team-mode-activebackup \
-            PACKAGE_kmod-team-mode-broadcast PACKAGE_kmod-team-mode-loadbalance \
-            PACKAGE_kmod-team-mode-random PACKAGE_kmod-team-mode-roundrobin \
-            PACKAGE_kmod-macsec PACKAGE_kmod-mpls PACKAGE_kmod-vrf \
-            PACKAGE_kmod-sctp PACKAGE_kmod-tcp-bbr PACKAGE_kmod-tcp-hybla \
-            PACKAGE_kmod-tcp-scalable PACKAGE_kmod-netem PACKAGE_kmod-ipsec \
-            PACKAGE_kmod-ipsec4 PACKAGE_kmod-ipsec6 PACKAGE_kmod-xfrm-interface \
-            PACKAGE_kmod-sched-core PACKAGE_kmod-sched-cake \
-            PACKAGE_kmod-sched-fq-pie PACKAGE_kmod-sched-skbprio \
-            PACKAGE_kmod-sched-flower PACKAGE_kmod-sched-bpf \
-            PACKAGE_kmod-sched-pie PACKAGE_kmod-sched-red \
-            PACKAGE_kmod-sched-prio PACKAGE_kmod-sched-drr \
-            PACKAGE_kmod-sched-mqprio PACKAGE_kmod-sched-mqprio-common \
-            PACKAGE_kmod-sched-ctinfo PACKAGE_kmod-sched-connmark \
-            PACKAGE_kmod-sched-ipset PACKAGE_kmod-sched-act-vlan \
-            PACKAGE_kmod-sched-act-police PACKAGE_kmod-sched-act-sample \
-            PACKAGE_kmod-fs-ext4 PACKAGE_kmod-fs-f2fs PACKAGE_kmod-fs-exfat \
-            PACKAGE_kmod-fs-vfat PACKAGE_kmod-fs-msdos PACKAGE_kmod-fs-ntfs3 \
-            PACKAGE_kmod-fs-isofs PACKAGE_kmod-fs-hfsplus PACKAGE_kmod-fs-udf \
-            PACKAGE_kmod-fs-configfs PACKAGE_kmod-fs-exportfs \
-            PACKAGE_kmod-fs-btrfs PACKAGE_kmod-fs-xfs \
-            PACKAGE_kmod-usb-storage PACKAGE_kmod-usb-storage-uas \
-            PACKAGE_kmod-usb-storage-extras PACKAGE_kmod-usb-printer \
-            PACKAGE_kmod-usb-serial PACKAGE_kmod-usb-serial-ch341 \
-            PACKAGE_kmod-usb-serial-ftdi PACKAGE_kmod-usb-serial-cp210x \
-            PACKAGE_kmod-usb-serial-pl2303 PACKAGE_kmod-usb-serial-option \
-            PACKAGE_kmod-usb-serial-wwan PACKAGE_kmod-usb-net-cdc-eem \
-            PACKAGE_kmod-usb-net-cdc-ether PACKAGE_kmod-usb-net-cdc-mbim \
-            PACKAGE_kmod-usb-net-cdc-ncm PACKAGE_kmod-usb-net-cdc-subset \
-            PACKAGE_kmod-usb-net-huawei-cdc-ncm PACKAGE_kmod-usb-gadget \
-            PACKAGE_kmod-usb-gadget-eth PACKAGE_kmod-usb-gadget-serial \
-            PACKAGE_kmod-usb-gadget-mass-storage \
-            PACKAGE_kmod-nls-cp437 PACKAGE_kmod-nls-cp850 PACKAGE_kmod-nls-cp852 \
-            PACKAGE_kmod-nls-cp866 PACKAGE_kmod-nls-cp932 PACKAGE_kmod-nls-cp936 \
-            PACKAGE_kmod-nls-cp950 PACKAGE_kmod-nls-iso8859-1 \
-            PACKAGE_kmod-nls-iso8859-15 PACKAGE_kmod-nls-utf8 \
-            PACKAGE_kmod-nls-ucs2-utils \
-            PACKAGE_kmod-softdog PACKAGE_kmod-mtdoops PACKAGE_kmod-fixed-phy \
-            PACKAGE_kmod-phylink PACKAGE_kmod-of-mdio PACKAGE_kmod-input-evdev \
-            PACKAGE_kmod-input-gpio-keys PACKAGE_kmod-input-gpio-keys-polled \
-            PACKAGE_kmod-input-uinput PACKAGE_kmod-leds-pwm PACKAGE_kmod-leds-uleds \
-            PACKAGE_kmod-zram PACKAGE_zram-swap \
-            PACKAGE_conntrack PACKAGE_conntrackd PACKAGE_ipset \
-            PACKAGE_ip-full PACKAGE_tc-full PACKAGE_ip-bridge \
-            PACKAGE_tcpdump PACKAGE_iperf3 PACKAGE_ethtool PACKAGE_mtr-json \
-            PACKAGE_nlbwmon PACKAGE_curl PACKAGE_wget-ssl PACKAGE_nano \
-            PACKAGE_openssl-util PACKAGE_openssh-client PACKAGE_coreutils \
-            PACKAGE_htop PACKAGE_iftop; do
-            sed -i "/^CONFIG_$s=/d; /^# CONFIG_${s} is not set\$/d" .config
-          done
-          # Generate .config seed from script
-          bash "${SCRIPT_DIR}/generate-config-seed.sh"
-          cat .config.seed >> .config
-          rm .config.seed
-          make defconfig
+        run: bash scripts/build/configure-config.sh
 
       - name: Inject first-boot defaults
-        run: |
-          bash "${SCRIPT_DIR}/inject-firstboot-defaults.sh" "$OPENWRT_DIR"
+        run: bash scripts/build/inject-firstboot-defaults.sh
 
       - name: Build firmware
-        run: |
-          cd "$OPENWRT_DIR"
-          make -j$(nproc) V=s 2>&1 | tee build.log
+        run: bash scripts/build/compile-firmware.sh
 
       - name: Validate image size
-        run: |
-          TARGET_DIR="$OPENWRT_DIR/bin/targets/mediatek/filogic"
-          STRICT=1 bash "${SCRIPT_DIR}/check-image-size.sh" "$TARGET_DIR"
+        run: bash scripts/build/report-artifacts.sh gate
 
       - name: Build OpenClash APK
         run: |
-          cd "$OPENWRT_DIR"
-          make package/feeds/openclash/luci-app-openclash/compile V=s 2>&1 | tee -a build.log
-          APK_PATH=$(find "$OPENWRT_DIR/bin/packages" -type f -name 'luci-app-openclash*.apk' -print -quit)
-          if [ -z "$APK_PATH" ]; then
-            echo "❌ OpenClash APK not generated"
-            find "$OPENWRT_DIR/bin/packages" -type f -iname '*openclash*.apk' -print || true
-            exit 1
-          fi
+          bash scripts/build/compile-openclash-apk.sh
+          APK_PATH=$(cat "$OPENWRT_DIR/.openclash-apk-path")
           echo "OPENCLASH_APK=$APK_PATH" >> "$GITHUB_ENV"
-          echo "✅ OpenClash APK generated:"
-          ls -lh "$APK_PATH"
+          echo "✅ OpenClash APK generated: $APK_PATH"
 
       - name: Collect artifacts
+        env:
+          ARTIFACT_PREFIX: ${{ matrix.artifact_prefix }}
         run: |
           TARGET_DIR="$OPENWRT_DIR/bin/targets/mediatek/filogic"
-          ARTIFACT_DIR="${{ runner.temp }}/artifacts-${{ matrix.artifact_prefix }}"
+          ARTIFACT_DIR="$RUNNER_TEMP/artifacts-$ARTIFACT_PREFIX"
           mkdir -p "$ARTIFACT_DIR"
           # Firmware images
-          cp "$TARGET_DIR"/*-initramfs-factory.ubi "$ARTIFACT_DIR"/ 2>/dev/null || true
-          cp "$TARGET_DIR"/*-squashfs-sysupgrade.bin "$ARTIFACT_DIR"/ 2>/dev/null || true
+          cp "$TARGET_DIR"/*-initramfs-factory.ubi "$ARTIFACT_DIR"/ \
+            2>/dev/null || true
+          cp "$TARGET_DIR"/*-squashfs-sysupgrade.bin "$ARTIFACT_DIR"/ \
+            2>/dev/null || true
           # OpenClash APK (the package directory varies by OpenWrt feed/branch)
           if [ -n "${OPENCLASH_APK:-}" ] && [ -f "$OPENCLASH_APK" ]; then
             cp "$OPENCLASH_APK" "$ARTIFACT_DIR"/
@@ -335,7 +167,8 @@ jobs:
             exit 1
           fi
           # SHA256 sums
-          (cd "$ARTIFACT_DIR" && sha256sum * > SHA256SUMS.txt 2>/dev/null || true)
+          (cd "$ARTIFACT_DIR" && sha256sum * > SHA256SUMS.txt) \
+            2>/dev/null || true
           echo "ARTIFACT_DIR=$ARTIFACT_DIR" >> $GITHUB_ENV
 
       - name: Upload workflow artifacts
@@ -346,6 +179,9 @@ jobs:
           retention-days: 90
 
       - name: Update VERIFIED_COMMIT (master, non-PR, success only)
-        if: ${{ matrix.verified_commit_lock && github.event_name != 'pull_request' && success() }}
+        if: >-
+          matrix.verified_commit_lock
+          && github.event_name != 'pull_request'
         run: |
-          bash "${SCRIPT_DIR}/update-verified-commit.sh" "${OPENWRT_DIR}" "${REPO_PATCH_DIR}"
+          bash scripts/update-verified-commit.sh \
+            "$OPENWRT_DIR" "$REPO_PATCH_DIR"

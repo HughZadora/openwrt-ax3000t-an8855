@@ -1,15 +1,26 @@
 #!/bin/bash
 # ============================================================
-# Inject first-boot UCI defaults for AX3000T-AN8855
-# Called from GitHub Actions CI workflow
+# 步骤 6: 注入首次启动定制（LAN 192.168.31.1 / WiFi 默认开启）
+#
+# 用法: inject-firstboot-defaults.sh [<openwrt-dir>]
+#       省略参数时使用 env.sh 的 OPENWRT_DIR（默认 <repo>/openwrt-ax3000t）
 # ============================================================
 
 set -euo pipefail
+BUILD_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./env.sh
+source "${BUILD_LIB_DIR}/env.sh"
 
-OPENWRT_DIR="${1:?Usage: $0 <openwrt-dir>}"
+if [ $# -ge 1 ] && [ -n "${1:-}" ]; then
+    OPENWRT_DIR="$1"
+fi
+[ -d "$OPENWRT_DIR" ] || die "OpenWrt 源码树不存在: $OPENWRT_DIR（先执行 prepare-source.sh）"
 
 UCIDEF_DIR="$OPENWRT_DIR/package/base-files/files/etc/uci-defaults"
 mkdir -p "$UCIDEF_DIR"
+
+log ""
+log "=== 步骤 6: 注入首次启动定制(IP 192.168.31.1 / WiFi 自动开启) ==="
 
 cat > "$UCIDEF_DIR/99-router-home-custom" <<'EOF'
 #!/bin/sh
@@ -48,4 +59,7 @@ exit 0
 EOF
 
 chmod +x "$UCIDEF_DIR/99-router-home-custom"
-echo "Injected: $UCIDEF_DIR/99-router-home-custom"
+
+log "  已注入: $UCIDEF_DIR/99-router-home-custom"
+log "  首次启动: LAN=192.168.31.1, WiFi SSID: OpenWrt-AX3000T / OpenWrt-AX3000T-5G (无加密)"
+log "  请尽快在 LuCI 中设置 root 密码与 WiFi 加密!"
