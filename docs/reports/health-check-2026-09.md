@@ -95,10 +95,16 @@ scripts/update-verified-commit.sh  # 只替换 sha 行，保留验证说明与�
 `.github/workflows/ci.yml` 删除了约 180 行内联重复逻辑，改为调用同一套脚本；所有 `run:` 块不再内联
 GitHub context 插值（改用 `env:`），PR 事件下"不锁定 commit、仍应用补丁"的漂移检测语义保持不变。
 
-**唯一的固件包集合变化（有意、且只影响本地构建）**：`luci-app-openclash=m` 会经由 feed 的
-`default y if PACKAGE_luci-app-openclash` 生效，使固件带上 `kmod-inet-diag`、`kmod-nft-tproxy`，并把
-`dnsmasq` 换成 `dnsmasq-full`（nftset 变体）。这正是 CI 与已发布产物一直以来的内容，本地构建此前
-与之不一致；修复后两者一致。固件业务行为（目标、包清单意图、首启配置）没有改变。
+**固件镜像内容没有变化（本轮实测）**：`CONFIG_PACKAGE_luci-app-openclash=m` 只把 OpenClash 及其运行依赖
+（`dnsmasq-full`、`ruby`、`libyaml`、`unzip` 等）作为**模块包**编译出来，不进镜像。证据：
+
+- 新构建与归档基线的 manifest 逐包比较为**空差异**（两边各 284 个包，完全相同）；
+- 镜像里仍然是 `dnsmasq`（不是 `dnsmasq-full`），`kmod-nft-tproxy` 在基线与新构建中都存在
+  （openclash feed 的 `Package/…/config` 默认值在基线构建时即已生效，与本次修复无关）；
+- `initramfs-kernel.bin` 体积仅差 324 字节（21,720,248 vs 21,719,924）。
+
+真正新增的只有镜像外的产物：`luci-app-openclash-0.47.156.apk`（7.8 MB，sha256
+`7d862af45a9c540d96c39d578421acd938da543565ec4789d09d63821c2b5401`）。因此"不改动固件包集合与业务行为"这一约束成立，本地构建与 CI/发布产物现在也一致。
 
 ### 4.2 全新完整构建（仓库外独立工作树）
 
@@ -142,7 +148,7 @@ GitHub context 插值（改用 `env:`），PR 事件下"不锁定 commit、仍�
 | B-5 | CI 依赖仓库设置（Actions 读写权限）才能回推 VERIFIED_COMMIT | `permissions: contents: write` + 脚本 push | 属仓库设置而非代码问题，已在 `docs/development/guide.md` 的"Required Repository Settings"中说明 |
 | B-6 | 仓库内的 OpenWrt 构建树（21 GB） | `openwrt-ax3000t/` 被忽略，仍在磁盘上 | 设计如此（本地构建树），删除与否不属本次范围 |
 | B-8 | 本机与 CI 的宿主构建依赖不完全一致：本机缺 `swig`、`ccache`、`python3-setuptools`（CI 的 `Install dependencies` 装了 swig/ccache，未装 setuptools） | `command -v swig/ccache` 为空、`python3 -c "import setuptools"` 失败；本机 OpenWrt 源码树未使用 swig（所选包中无任何包引用它） | 已确认本轮所选包不需要 swig；ccache 仅影响速度；本轮构建未出现 setuptools 相关错误。属环境差异，记录而非修仓库 |
-| B-7 | 固件自带 `dnsmasq`(=y)，而 OpenClash apk 依赖 `dnsmasq-full`(=m)；两者在包管理器层面冲突，README 上的 `apk add … luci-app-openclash-*.apk` 在真机上可能因冲突失败 | 构建配置实测：`CONFIG_PACKAGE_dnsmasq=y`、`CONFIG_PACKAGE_dnsmasq-full=m`、`CONFIG_PACKAGE_luci-app-openclash=m`；openclash feed Makefile 的 `DEPENDS:=+dnsmasq-full …` 与 base-files 变体包的 `CONFLICTS` 语义 | 无真机可验证（本环境不能刷机）；属上游 feed 的既定行为，非本次改动引入。真机安装失败时先 `apk del dnsmasq` 或改用 `--force-*`，或把 `dnsmasq-full` 提为镜像内 =y（会改变固件包集合，需你决策） |
+| B-7 | 固件自带 `dnsmasq`，而 OpenClash apk 声明依赖 `dnsmasq-full`；两者是互斥变体，README 里的 `apk add … luci-app-openclash-*.apk` 在真机上可能因冲突失败 | 新构建 `.config`：`CONFIG_PACKAGE_dnsmasq-full=m`（模块包，不进镜像）；固件 manifest：`dnsmasq - 2.93-r3`（镜像内）；openclash feed Makefile：`DEPENDS:=+dnsmasq-full …` | 无真机可验证（本环境不能刷机）；属上游 feed 的既定行为，非本次改动引入。真机安装失败时先 `apk del dnsmasq` 或改用 `--force-*`，或把 `dnsmasq-full` 提为镜像内 =y（会改变固件包集合，需你决策） |
 
 ### 无害构建噪音（不改）
 
@@ -206,16 +212,17 @@ scripts/check-image-size.sh "$EXT/openwrt-ax3000t/bin/targets/mediatek/filogic"
 
 ### 7.2 本轮全新构建结果
 
-> 构建进行中；退出码、产物体积、apk 体积与 sha256 在构建结束后填入本表。
+> 本轮独立工作树的完整构建（`bash setup.sh build` 退出码 0，耗时约 16 分钟，含断点续跑）；
+> 数据来自 `run-full-build.log` 与实际产物。
 
 | 项 | 结果 |
 | --- | --- |
-| `bash setup.sh build` 退出码 | 待填 |
-| initramfs FIT 体积门（STRICT=1） | 待填 |
-| `…-initramfs-kernel.bin` | 待填 |
-| `…-initramfs-factory.ubi` | 待填 |
-| `…-squashfs-sysupgrade.bin` | 待填 |
-| `luci-app-openclash-*.apk` | 待填 |
+| `bash setup.sh build` 退出码 | 0（见 run-full-build.log 末行） |
+| initramfs FIT 体积门（STRICT=1） | 通过：20.7 MiB ≤ 26 MiB |
+| `…-initramfs-kernel.bin` | 21,720,248 B（20.7 MiB） | sha256 `8c50f15952142b876da0a441e919bf1d586434be7b659b645c7fe26e335d089e` |
+| `…-initramfs-factory.ubi` | 23,461,888 B（22.4 MiB） | sha256 `afc3c66b402b163a1221cea169966d8cbcc20465ac46ef37d52e55a0dd79677f` |
+| `…-squashfs-sysupgrade.bin` | 23,316,776 B（22.2 MiB） | sha256 `40ebf28bfa4463b3f462e7e7cfb166fec1bcb283e4cbc58f1cb2679c78f2910b` |
+| `luci-app-openclash-0.47.156.apk` | 8,163,392 B（7.8 MiB） | sha256 `7d862af45a9c540d96c39d578421acd938da543565ec4789d09d63821c2b5401` |
 
 ### 7.3 复跑验证清单（本次实际执行）
 
