@@ -56,7 +56,15 @@
 
 | 事实 | 修复前的位置 | 后果 |
 | --- | --- | --- |
-| `.config` 种子 | `setup.sh` 内联 + `scripts/generate-config-seed.sh` | 两份相差一行 `CONFIG_PACKAGE_luci-app-openclash=m`：CI 有、本地无 → 本地 build 必然失败（A-1） |
+| `.config` 种子 | `setup.sh` 内联 + `scripts/generate-config-seed.sh` | 两份只差一行（本地那份缺 `CONFIG_PACKAGE_luci-app-openclash=m`）→ 本地 build 必然失败（A-1） |
+
+修复前两份种子的原始差异（`git show 1f1d4b1:setup.sh` 的内联种子 vs
+`scripts/build/generate-config-seed.sh` 生成的种子，已去掉注释与空行后排序比较）：
+
+```diff
+40a41
+> CONFIG_PACKAGE_luci-app-openclash=m
+```
 | 自有符号清理表（~230 行） | `setup.sh` + `.github/workflows/ci.yml` | 双份维护，易再次漂移 |
 | 首启 uci-defaults | `setup.sh` 内联 + `scripts/inject-firstboot-defaults.sh` | 逐字重复 |
 | 补丁应用流程 | `setup.sh` + `ci.yml` | 双份 dry-run/apply/校验逻辑 |
