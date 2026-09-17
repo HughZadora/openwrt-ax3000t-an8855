@@ -107,6 +107,11 @@ GitHub context 插值（改用 `env:`），PR 事件下"不锁定 commit、仍�
   `928cd26` 检出，`build_dir`/`staging_dir`/`bin` 均为空）
 - 命令：`bash setup.sh build`（本轮重组后的脚本）
 - 对照基线：`/home/hugh/Projects/ax3000t-baseline-20260917`（重组前本地构建产物 + sha256）
+- 执行记录（第一次尝试失败，非仓库缺陷）：首轮把 `bash setup.sh build` 的 stdout 直接接到后台任务，
+  `make V=s` 的详细输出在 18 分钟内就超过运行器 20 MB 的任务输出上限而被终止（日志里没有任何编译错误，
+  已确认只有已知的 `(ignored)` 子 make 噪音）。修法是让包装脚本把 `make` 的详细输出重定向进
+  `run-full-build.log`，只在任务 stdout 打印阶段行与退出码；随后在同一工作树断点续跑（make 增量），
+  这也是最终的验收构建。教训：`V=s` 的日志必须落盘，不能进后台任务 stdout。
 
 > 本轮构建的退出码、产物体积与 sha256 在构建结束后填入（见 §7 附：产物测量）。
 
