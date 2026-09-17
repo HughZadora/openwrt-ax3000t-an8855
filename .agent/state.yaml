@@ -26,7 +26,8 @@ safety:
   internal_asset_scan: unknown
 
 # Runtime state (per 01.md §8 required)
-current_task: "CI/CD Pipeline: GitHub Actions + semantic-release + VERIFIED_COMMIT auto-update (COMPLETED)"
+current_task: "CI/CD Pipeline: GitHub Actions + semantic-release + VERIFIED_COMMIT
+  auto-update (COMPLETED)"
 task_id: "20260821-ci-cd-pipeline"
 risk_level: L1
 auth_status: completed
@@ -70,7 +71,11 @@ completed_verifications:
   - "semantic-release-config"
 unresolved_risks: []
 last_l2_action: null
-handoff_notes: "CI/CD pipeline implemented. Workflows: ci.yml (build matrix, scheduled, VERIFIED_COMMIT auto-update), release.yml (semantic-release). Requires GitHub repo settings: Actions permissions (read/write), branch protection on master. L2 actions (tag push, release create, VERIFIED_COMMIT push) gated by workflow success - confirm before enabling."
+handoff_notes: "CI/CD pipeline implemented. Workflows: ci.yml (build matrix, scheduled,
+  VERIFIED_COMMIT auto-update), release.yml (semantic-release). Requires GitHub
+  repo settings: Actions permissions (read/write), branch protection on master.
+  L2 actions (tag push, release create, VERIFIED_COMMIT push) gated by workflow
+  success - confirm before enabling."
 expires_at: "2026-08-28"
 
 # Snapshot metadata (incremental snapshot mechanism)
