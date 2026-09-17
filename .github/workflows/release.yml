@@ -46,7 +46,7 @@ jobs:
         if: github.event_name == 'workflow_run'
         run: git checkout -B master "${{ steps.source.outputs.sha }}"
 
-      - name: Download validated firmware artifacts
+      - name: Download validated master artifacts
         if: github.event_name == 'workflow_run'
         uses: actions/download-artifact@v4
         with:
@@ -54,6 +54,17 @@ jobs:
           path: release-assets
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Verify release assets
+        if: github.event_name == 'workflow_run'
+        run: |
+          set -eu
+          echo "Release assets:"
+          find release-assets -maxdepth 1 -type f -printf '%f\n' | sort
+          test -n "$(find release-assets -maxdepth 1 -type f -name '*-initramfs-factory.ubi' -print -quit)"
+          test -n "$(find release-assets -maxdepth 1 -type f -name '*-squashfs-sysupgrade.bin' -print -quit)"
+          test -n "$(find release-assets -maxdepth 1 -type f -name 'luci-app-openclash*.apk' -print -quit)"
+          test -s release-assets/SHA256SUMS.txt
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
