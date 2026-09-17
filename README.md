@@ -76,11 +76,11 @@ Typical outputs include:
 The OpenClash package is written to:
 
 ```text
-openwrt-ax3000t/bin/packages/aarch64_cortex-a53/openclash/luci-app-openclash_<version>_<arch>.apk
+openwrt-ax3000t/bin/packages/aarch64_cortex-a53/openclash/luci-app-openclash-<version>.apk
 ```
 
-The underscore-separated filename is intentional: it is the package naming
-format emitted by OpenWrt's APK builder.
+The versioned filename is emitted by OpenWrt's APK builder and may vary slightly
+between OpenWrt branches.
 
 ## Flashing
 
@@ -102,9 +102,9 @@ After the first boot, set a root password and configure Wi-Fi encryption before
 connecting the router to an untrusted network. Install OpenClash separately:
 
 ```sh
-scp luci-app-openclash_*.apk root@192.168.31.1:/tmp/
+scp luci-app-openclash-*.apk root@192.168.31.1:/tmp/
 ssh root@192.168.31.1 \
-  'apk add /tmp/luci-app-openclash_*.apk luci-compat'
+  'apk add /tmp/luci-app-openclash-*.apk luci-compat'
 ```
 
 ## Repository layout

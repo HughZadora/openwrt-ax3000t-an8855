@@ -7,7 +7,18 @@
     "@semantic-release/commit-analyzer",
     "@semantic-release/release-notes-generator",
     "@semantic-release/changelog",
-    "@semantic-release/github",
+    [
+      "@semantic-release/github",
+      {
+        "assets": [
+          "release-assets/*"
+        ],
+        "successComment": false,
+        "failComment": false,
+        "releasedLabels": ["released"],
+        "addReleases": "bottom"
+      }
+    ],
     "@semantic-release/git"
   ],
   "commitAnalyzer": {
@@ -44,18 +55,6 @@
   "changelog": {
     "changelogFile": "CHANGELOG.md",
     "changelogTitle": "# Changelog\n\nAll notable changes to this project will be documented in this file.\n\nThe format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),\nand this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)."
-  },
-  "github": {
-    "assets": [
-      "release-assets/*-initramfs-factory.ubi",
-      "release-assets/*-squashfs-sysupgrade.bin",
-      "release-assets/luci-app-openclash_*.apk",
-      "release-assets/SHA256SUMS.txt"
-    ],
-    "successComment": false,
-    "failComment": false,
-    "releasedLabels": ["released"],
-    "addReleases": "bottom"
   },
   "git": {
     "pushRepo": "https://github.com/HughZadora/openwrt-ax3000t-an8855.git",
