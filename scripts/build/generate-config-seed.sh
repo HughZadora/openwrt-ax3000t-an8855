@@ -27,6 +27,11 @@ OUT_DIR="${1:-.}"
 #    "default y if PACKAGE_luci-app-openclash" 声明了 kmod-inet-diag /
 #    kmod-nft-tproxy 与 dnsmasq-full nftset 变体，因此 CI 与本地固件都会
 #    带上这些 OpenClash 运行所需的组件。
+#
+#    下面的 CONFIG_VERSIONOPT / CONFIG_VERSION_REPO(USTC 镜像)只写在这里做
+#    记录: 两者受 CONFIG_IMAGEOPT 门控，普通源码构建的 .config 无法打开它们，
+#    因此实际固件的 feeds 仍指向 downloads.openwrt.org。详见
+#    docs/reports/health-check-2026-09.md(待决策项 U1)。
 # ---------------------------------------------------------------------------
 cat > "$OUT_DIR/.config.seed" <<'CONFIG_EOF'
 CONFIG_TARGET_mediatek=y

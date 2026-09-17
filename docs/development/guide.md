@@ -8,7 +8,11 @@
 
 ---
 
-This document consolidates all developer-facing information from `docs/operations/home-router.md`, `docs/reports/build-experience.md`, and `docs/reference/router-state.md`. For user onboarding, see [README.md](../../README.md) / [README.zh.md](../../README.zh.md).
+This is the build and development guide. Runtime configuration, device state, and the
+historical build/troubleshooting archive stay in their canonical documents
+([home-router.md](../operations/home-router.md), [router-state.md](../reference/router-state.md),
+[build-experience.md](../reports/build-experience.md)) and are linked, never copied, so every
+fact has exactly one source of truth. For user onboarding, see [README.md](../../README.md).
 
 ---
 
@@ -36,45 +40,30 @@ sudo apt update && sudo apt install -y \
 sudo pacman -S --needed base-devel gcc git ncurses openssl python3 rsync swig unzip zlib ccache
 ```
 
-### Version Pinning
-
-Use `mise` / `asdf` / `nvm` for reproducible toolchains:
-
-```bash
-# Example .tool-versions
-nodejs 20.18.0
-pnpm 9.12.0
-go 1.22.0
-```
-
 ---
 
 ## Build Process Deep Dive
 
 ### What `setup.sh` Does
 
-```bash
-# Step 1: Clone OpenWrt main (or --branch)
-git clone --depth 1 --branch main https://git.openwrt.org/openwrt/openwrt.git openwrt-ax3000t
+`setup.sh` only parses arguments and orders steps. Every step lives in `scripts/build/` and is
+shared with CI, so the local build and CI cannot drift apart.
 
-# Step 2: Lock to verified commit (main branch only)
-# Reads patches/VERIFIED_COMMIT, fetches & checks out that SHA
-# Prevents mainline drift breaking patches
+| Step | Script | What it does |
+| --- | --- | --- |
+| 1 | `prepare-source.sh` | Clone OpenWrt (repo branch `master` → upstream `main`) and lock to `patches/VERIFIED_COMMIT` |
+| 2 | `apply-an8855-patches.sh` | Copy the AN8855 DTS, dry-run + apply the patch set, verify each touched file |
+| 3 | `configure-feeds.sh` | Add the OpenClash feed, then `feeds update -a` + `feeds install -a` |
+| 4 | `configure-config.sh` | `make defconfig`, clear the project-owned symbols, append the seed, `make defconfig` |
+| 5 | `inject-firstboot-defaults.sh` | Install `99-router-home-custom` uci-defaults (LAN IP + open WiFi) |
+| 6 | `compile-firmware.sh` | `make -j$(nproc) V=s | tee build.log` (pipefail: a compile error fails the step) |
+| 7 | `report-artifacts.sh gate` | initramfs FIT size gate (`STRICT=1`, ≤ 26 MiB) |
+| 8 | `compile-openclash-apk.sh` | Build OpenClash separately as an apk and record its path |
+| 9 | `report-artifacts.sh summary` | Final size gate + apk sha256 + flash checklist |
 
-# Step 3: Apply AN8855 patches (main branch only)
-# patches/0001-add-an8855-target.patch → filogic.mk + platform.sh + 02_network
-# patches/mt7981b-xiaomi-mi-router-ax3000t-an8855.dts → single UBI DTS
-# Dry-run validation before/after application
-
-# Step 4: Add OpenClash feed
-echo "src-git openclash https://github.com/vernesong/OpenClash.git" >> feeds.conf
-
-# Step 5: Update & install feeds
-./scripts/feeds update -a && ./scripts/feeds install -a
-
-# Step 6: Generate defconfig (an8855 target + Tailscale + curated kmods + USTC mirror)
-make defconfig
-```
+The `.config` contract (seed + project-owned symbol list) comes from
+`scripts/build/generate-config-seed.sh`; that file, not the CI workflow, is the registry of
+packages this project selects.
 
 ### Key Patch Details
 
@@ -102,8 +91,7 @@ Pre-selected in `defconfig` to fit <26MB initramfs FIT limit:
 
 ```bash
 # Runs automatically in setup.sh build mode; manual:
-cd openwrt-ax3000t
-../scripts/check-image-size.sh
+scripts/check-image-size.sh openwrt-ax3000t/bin/targets/mediatek/filogic
 ```
 
 Validates `*-initramfs-kernel.bin` (FIT) ≤ 26MB. **Excludes** `*-initramfs-factory.ubi` (UBI container, not loaded by U-Boot directly).
@@ -199,167 +187,37 @@ ls -lh bin/targets/mediatek/filogic/*initramfs-kernel.bin
 
 ## Router Runtime Configuration
 
-*Source: `docs/operations/home-router.md` + `docs/reference/router-state.md`*
-
-### Network Topology
-
-```
-LAN: br-lan = 192.168.31.1/24 (bridged lan2/lan3/lan4 via AN8855)
-WAN: wan@eth0 → PPPoE (public IP 100.77.x)
-Modem: static 192.168.1.99/24 on wan device (single-arm modem access)
-Tailscale: tailscale0 TUN (100.104.191.81/32) — advertises 192.168.31.0/24
-```
-
-### Key UCI Configs
-
-```bash
-# Network
-uci show network
-# br-lan: static 192.168.31.1/24, ifname=lan2 lan3 lan4
-# wan: proto=pppoe
-# Modem: proto=static, ipaddr=192.168.1.99, netmask=255.255.255.0, device=wan
-
-# Firewall (fw4/nftables)
-# zones: lan(ACCEPT), wan(REJECT+masq), modem(ACCEPT+masq), tailscale(ACCEPT)
-# forwards: lan→wan, lan→modem, tailscale↔lan
-
-# Tailscale
-tailscale up --accept-dns=false --advertise-routes=192.168.31.0/24 --snat-subnet-routes=false
-# prefs persisted in /etc/tailscale/tailscaled.state
-# CorpDNS=false (MagicDNS off), NoSNAT=true, RouteAll=false
-```
-
-### WiFi Config (Current)
-
-| Band | SSID | Channel | Width | Encryption | TX Power |
-|------|------|---------|-------|------------|----------|
-| 2.4G | 猪猪之家 | 1 (HE20) | 20MHz | sae-mixed (WPA3/WPA2) | 20 dBm |
-| 5G | 猪猪之家 | 149 (HE80) | 80MHz | sae-mixed | 28 dBm |
-
-**Note**: 5G ch 149 avoids DFS; 802.11r/ft_psk disabled (causes hostapd error on single AP).
-
-### Stability Tuning (Applied)
-
-```bash
-# /etc/sysctl.d/99-stability.conf
-vm.swappiness=10
-net.core.netdev_max_backlog=4096
-net.core.somaxconn=4096
-net.ipv4.tcp_slow_start_after_idle=0
-net.netfilter.nf_conntrack_max=32768
-net.netfilter.nf_conntrack_tcp_timeout_established=3600
-net.netfilter.nf_conntrack_udp_timeout=60
-net.netfilter.nf_conntrack_icmp_timeout=10
-kernel.panic=3
-kernel.panic_on_oops=1
-```
-
-- Hardware watchdog: `procd` feeds `/dev/watchdog` (30s timeout, 5s interval)
-- zram swap: `/dev/zram0` 118MB, priority 100
-- No NAND swap (prevents flash wear)
-- No scheduled reboots (7×24 target)
-
----
+Canonical source: [home-router.md](../operations/home-router.md) — network topology, UCI
+configuration, WiFi settings, and stability tuning of the running router.
 
 ## Device State Reference
 
-*Source: `docs/reference/router-state.md` (2026-08-14 data)*
-
-### Hardware
-
-| Item | Value |
-|------|-------|
-| Model | Xiaomi Mi Router AX3000T |
-| Switch | **AN8855** (external, not MT7531) |
-| SoC | MediaTek MT7981 (Filogic 820), aarch64 Cortex-A53 |
-| RAM | 256MB (239088K available) |
-| Flash | 128MB SPI-NAND |
-| U-Boot | **Stock** (not OpenWrt U-Boot) |
-| board_name | `xiaomi,mi-router-ax3000t-an8855` |
-
-### Flash Partitions (`/proc/mtd`)
-
-| mtd | Name | Size | Notes |
-|-----|------|------|-------|
-| mtd0 | BL2 | 1MB | Boot header |
-| mtd1 | Nvram | 256KB | |
-| mtd2 | Bdata | 256KB | |
-| mtd3 | Factory | 2MB | EEPROM |
-| mtd4 | FIP | 2MB | |
-| mtd5 | crash | 256KB | |
-| mtd6 | crash_log | 256KB | |
-| mtd7 | KF | 256KB | |
-| **mtd8** | **ubi** | **112MB** | **System partition (single UBI)** |
-
-### UBI Volumes (`ubinfo -a`)
-
-| Vol ID | Name | Size | Role |
-|--------|------|------|------|
-| 0 | kernel | 4.2 MiB | Kernel image |
-| 1 | fit | 4.2 MiB | FIT kernel |
-| 2 | rootfs | 25.6 MiB | Squashfs RO rootfs |
-| 3 | rootfs_data | 71.5 MiB | Overlay (RW config/data) |
-
-Mount: `/dev/root` (vol rootfs) → `/rom` RO; `ubi0_3` → `/overlay`.
-
-### Upgrade Path (Critical)
-
-**Current**: Single UBI 112MB + stock U-Boot + custom board_name
-**Mainline stock**: Dual-partition (ubi_kernel + ubi) — **INCOMPATIBLE**
-
-```
-Do NOT sysupgrade stock image directly.
-Use: initramfs-factory.ubi → mtd write ubi → reboot → sysupgrade -n squashfs-sysupgrade.bin
-```
-
-**Recovery**: Power off → hold Reset → power on → 192.168.31.1 recovery page
-
----
+Canonical source: [router-state.md](../reference/router-state.md) — hardware, flash
+partitions, UBI volumes, and the single-UBI upgrade path.
 
 ## Historical Build Experience
 
-*Source: `docs/reports/build-experience.md` (2026-06/08 records)*
-
-### WSL-Specific Fixes
-
-1. **fakeroot path hardcode** — `staging_dir/host/bin/fakeroot` had hardcoded old path. Fixed to auto-derive: `SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"`
-2. **PATH pollution** — `/mnt/c/Program Files/...` creates relative `Files/...` entry. Fixed in `include/rootfs.mk`: `-execdir` → `-exec`
-3. **Proxy** — `ALL_PROXY` works natively with git/curl; no `proxychains` (conflicts with fakeroot LD_PRELOAD)
-
-### Performance Baselines
-
-| Strategy | First Build | Rebuild (ccache) |
-|----------|-------------|------------------|
-| `-j$(nproc)` | 2–6 hours | 30 min |
-| ccache hit rate | ~13% | 60%+ |
-| `ALL_PROXY` speedup | 1.2 KB/s → 34 MB/s | N/A |
-
-### Key Lessons
-
-- **Kernel modules are compile-time only** — cannot `apk add kmod-*` post-flash
-- **Initramfs size is hard constraint** — every kmod counts; audit with `check-image-size.sh`
-- **OpenClash + LuCI 26** — requires `luci-compat` (Lua runtime removed in LuCI 26)
-- **PATCH_DIR collision** — never export `PATCH_DIR`/`FILES_DIR`/`KDIR` in build scripts
-
----
+Canonical source: [build-experience.md](../reports/build-experience.md) — WSL fixes, proxy
+notes, performance baselines, and past image-size incidents.
 
 ## Contribution Workflow
 
 ### Before PR
 
 ```bash
-# 1. Test build
+# 1. Fast local checks (no build required)
+bash -n setup.sh scripts/build/*.sh scripts/check-image-size.sh
+scripts/repository-check
+
+# 2. Full build (firmware + size gate + OpenClash apk)
 bash setup.sh build
 
-# 2. Verify image size
-scripts/check-image-size.sh
-
-# 3. Run validation gates (if available)
-# python3 .config/opencode/gates/configuration/verify-project-documentation.py
-
-# 4. Update docs if user-facing change
-# README.md / README.zh.md / docs/development/guide.md
+# 3. Update docs when a user-facing command, path, or behavior changes
+#    (README.md, this guide, docs/reference/router-state.md, ...)
 ```
+
+`scripts/pull-request-check <body-file>` validates the PR body contract (issue reference,
+`## Summary`, `## Validation`).
 
 ### Commit Convention
 
@@ -390,7 +248,7 @@ Example: `fix(patches): correct AN8855 MAC address extraction`
 | Single UBI target on mainline | Stock U-Boot + AN8855 only boots single UBI | `docs/reference/router-state.md` §0 |
 | OpenClash as APK not in firmware | initramfs >26MB with OpenClash → U-Boot load fail | `README.md` FAQ |
 | Curated kmod set | 179 kmods → 27.9MB initramfs (fail); curated → ~25MB | `docs/reports/build-experience.md` §6.3 |
-| USTC mirror default | Domestic download 28500x faster | `docs/reports/build-experience.md` §4.2 |
+| USTC mirror intended, not applied | `CONFIG_VERSION_REPO` sits behind `CONFIG_IMAGEOPT` / `CONFIG_VERSIONOPT`, which a plain source `.config` cannot enable, so built images keep the upstream `downloads.openwrt.org` feeds | `docs/reports/health-check-2026-09.md` |
 | `VERIFIED_COMMIT` lock | Prevent mainline drift breaking patches | `setup.sh` §75-83 |
 | `REPO_PATCH_DIR` not `PATCH_DIR` | Avoids OpenWrt kernel.mk variable collision | `docs/reports/build-experience.md` §9 |
 
@@ -398,28 +256,20 @@ Example: `fix(patches): correct AN8855 MAC address extraction`
 
 ## Verification Gates
 
-### Pre-Commit (Local)
+No lint, typecheck, or formatter toolchain is tracked in this repository (no Node, Python, or
+shell-linter config). These are the gates that actually exist:
 
-```bash
-# Check documentation sync
-python3 .config/opencode/gates/configuration/verify-project-documentation.py
+| Gate | Command | Scope |
+| --- | --- | --- |
+| Shell syntax | `bash -n setup.sh scripts/build/*.sh scripts/check-image-size.sh` | every build script |
+| Repository baseline | `scripts/repository-check` | required files, docs sections, tracking hygiene |
+| PR body contract | `scripts/pull-request-check <body-file>` | issue reference, Summary, Validation |
+| Patch applicability | `bash setup.sh` (dry-run path) or a CI `master` build | AN8855 patch set vs upstream `main` |
+| Image size | `scripts/check-image-size.sh <target-dir>` (`STRICT=1`) | initramfs FIT ≤ 26 MiB |
+| Full build | `bash setup.sh build` | firmware + OpenClash apk |
 
-# Lint (if configured in .agents/config.yaml)
-# <project-lint-command>
-```
-
-### Pre-Push (CI)
-
-```bash
-# Full validation
-python3 .config/opencode/gates/configuration/verify-project-documentation.py
-actionlint .github/workflows/
-shellcheck setup.sh scripts/check-image-size.sh
-markdownlint-cli2 README.md README.zh.md docs/development/guide.md
-yaml-lint .agents/config.yaml .opencode/skill-config.yaml
-```
-
----
+`actionlint`, `shellcheck`, and `markdownlint-cli2` are not installed or configured here. Run
+them manually if you have them; they are not part of the repository contract.
 
 ## CI/CD Pipeline
 
@@ -431,8 +281,10 @@ This project uses GitHub Actions for continuous integration and semantic-release
 
 | Workflow | File | Triggers | Purpose |
 |----------|------|----------|---------|
-| **CI Build** | `.github/workflows/ci.yml` | Push/PR to `master`/`openwrt-24.10`, daily cron (02:00 UTC), manual dispatch | Build firmware + OpenClash APK, validate image size, upload artifacts |
-| **Release** | `.github/workflows/release.yml` | Push to `master` (after CI passes) | semantic-release: analyze commits → version → tag → GitHub Release with artifacts |
+| **CI Build** | `.github/workflows/ci.yml` | Push/PR to `master`/`openwrt-24.10`, monthly cron (02:00 UTC on the 1st), manual dispatch | Build firmware + OpenClash apk, validate image size, upload artifacts |
+| **Release** | `.github/workflows/release.yml` | Successful CI run on `master`, manual dispatch (dry-run) | semantic-release: analyze commits → version → tag → GitHub Release with artifacts |
+| **Pull Request** | `.github/workflows/pull-request.yml` | Any pull request | PR body contract + repository baseline (reusable workflow) |
+| **Repository Baseline** | `.github/workflows/repository-baseline.yml` | `workflow_call`, push to `master` | Runs `scripts/repository-check` |
 
 ### CI Build Details
 
@@ -482,16 +334,21 @@ npx semantic-release --no-ci --branch master
 ### Local CI Testing
 
 ```bash
-# Validate workflow syntax
-actionlint .github/workflows/
+# Repository baseline (required files, docs sections, tracking hygiene)
+scripts/repository-check
 
-# Test semantic-release config
+# PR body contract
+scripts/pull-request-check <body-file>
+
+# Test semantic-release config (needs the repo's git history)
 npx semantic-release --dry-run --no-ci
 
-# Run image size check locally
-cd openwrt-ax3000t
-../scripts/check-image-size.sh bin/targets/mediatek/filogic
+# Run the image size check locally
+scripts/check-image-size.sh openwrt-ax3000t/bin/targets/mediatek/filogic
 ```
+
+Workflow syntax is only validated by GitHub when the workflow runs; `actionlint` is not
+installed here.
 
 ### Required Repository Settings
 
@@ -504,7 +361,7 @@ cd openwrt-ax3000t
 ## References
 
 - [README.md](../../README.md) — User onboarding (English)
-- [README.zh.md](../../README.zh.md) — 用户入门 (中文)
+- [`scripts/build/`](../../scripts/build/) — one script per build step, shared with CI
 - [home-router.md](../operations/home-router.md) — Router runtime config (Tailscale, network)
 - [build-experience.md](../reports/build-experience.md) — Build troubleshooting archive
 - [router-state.md](../reference/router-state.md) — Device partition/UBI/firmware state

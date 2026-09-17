@@ -8,25 +8,39 @@ sections:
     purpose: current system architecture, boundaries, components, and data flows
 
   development:
-    purpose: local development, tooling, testing, debugging, and engineering conventions
+    purpose: >-
+      local development, tooling, testing, debugging, and conventions
+    documents:
+      - docs/development/guide.md
 
   deployment:
     purpose: build, release, deployment, environments, and delivery
 
   operations:
     purpose: monitoring, backup, maintenance, and ongoing service operation
+    documents:
+      - docs/operations/home-router.md
 
   runbooks:
-    purpose: executable operational, incident, recovery, and troubleshooting procedures
+    purpose: >-
+      executable operational, incident, recovery, and troubleshooting procedures
 
   reference:
-    purpose: stable factual references, APIs, schemas, configuration, and external systems
+    purpose: >-
+      stable factual references, APIs, schemas, configuration, external systems
+    documents:
+      - docs/reference/router-state.md
 
   reports:
-    purpose: validation, audit, migration, benchmark, and other time-bounded reports
+    purpose: >-
+      validation, audit, migration, benchmark, and other time-bounded reports
+    documents:
+      - docs/reports/build-experience.md
+      - docs/reports/health-check-2026-09.md
 
   proposals:
-    purpose: proposed designs and changes not yet accepted as durable project decisions
+    purpose: >-
+      proposed designs and changes not yet accepted as durable project decisions
 
   adr:
     purpose: material architectural decisions with long-term consequences

@@ -3,8 +3,8 @@ project:
   name: "openwrt-ax3000t-an8855"
   root: "/home/hugh/Projects/openwrt-ax3000t-an8855"
   visibility: public
-  reviewed_at: "2026-08-21"
-  reviewed_commit: "1c5eff5"
+  reviewed_at: "2026-09-18"
+  reviewed_commit: "11c3b88"
 
 knowledge:
   project_state: .agent/project-state.md
@@ -14,85 +14,53 @@ knowledge:
 authority:
   code: repository
   development_docs: repository
-  operations_docs: null
+  operations_docs: repository
 
 documentation:
-  readme_agent_block: true
+  index: docs/INDEX.yaml
+  readme_agent_block: false
   known_drift: []
 
 safety:
   max_data_classification: P1
-  secret_scan: unknown
-  internal_asset_scan: unknown
+  secret_scan: not-run
+  internal_asset_scan: not-run
 
-# Runtime state (per 01.md §8 required)
-current_task: "CI/CD Pipeline: GitHub Actions + semantic-release + VERIFIED_COMMIT auto-update (COMPLETED)"
-task_id: "20260821-ci-cd-pipeline"
-risk_level: L1
-auth_status: completed
-base_commit: "1c5eff5"
-allowed_read_paths:
-  - ".github/workflows/**"
-  - "setup.sh"
-  - "scripts/check-image-size.sh"
-  - "patches/VERIFIED_COMMIT"
-  - "patches/0001-add-an8855-target.patch"
-  - "patches/mt7981b-xiaomi-mi-router-ax3000t-an8855.dts"
-  - ".gitignore"
-  - "README.md"
-  - "DEVELOPMENT.md"
-  - ".agent/**"
-  - ".git/**"
-allowed_write_paths:
-  - ".github/workflows/**"
-  - ".releaserc.json"
-  - "scripts/generate-config-seed.sh"
-  - "scripts/inject-firstboot-defaults.sh"
-  - "scripts/update-verified-commit.sh"
-  - ".github/dependabot.yml"
-  - "README.md"
-  - "README.zh.md"
-  - "DEVELOPMENT.md"
-  - ".agent/**"
+# 运行时状态: 2026-08-21 的 CI/CD 任务已完成,不再持有授权范围(原先记录已过期)。
+current_task: null
+task_id: null
+risk_level: null
+auth_status: null
+base_commit: null
+allowed_read_paths: []
+allowed_write_paths: []
 forbidden_paths:
   - ".env*"
   - "**/secrets/**"
-  - "**/migrations/**"
-  - "package.json"
-  - "lockfiles"
   - "openwrt-ax3000t/**"
   - "bin/**"
 completed_verifications:
-  - "git-status"
-  - "plan-approved"
-  - "workflow-syntax"
+  - "repository-baseline"
   - "script-syntax"
-  - "semantic-release-config"
-unresolved_risks: []
+unresolved_risks:
+  - >-
+    U1: CONFIG_VERSION_REPO (USTC mirror) 在普通源码构建中无效(被 IMAGEOPT/VERSIONOPT
+    阻断);文档已改正为实际行为,是否改配置待定
 last_l2_action: null
-handoff_notes: "CI/CD pipeline implemented. Workflows: ci.yml (build matrix, scheduled, VERIFIED_COMMIT auto-update), release.yml (semantic-release). Requires GitHub repo settings: Actions permissions (read/write), branch protection on master. L2 actions (tag push, release create, VERIFIED_COMMIT push) gated by workflow success - confirm before enabling."
-expires_at: "2026-08-28"
+handoff_notes: >-
+  构建步骤在 scripts/build/,与 CI 共用。改构建配置前先读
+  docs/reports/health-check-2026-09.md。
+expires_at: null
 
-# Snapshot metadata (incremental snapshot mechanism)
 snapshot:
   version: 1
-  generated_at: "2026-08-21"
-  base_commit: "1c5eff5"
-  branch: "master"
-  workspace_fingerprint: "openwrt-build-project"
-  structure_fingerprint: "single-repo-docs-patches-scripts"
-  last_incremental_sync: "2026-08-21"
-  changed_modules_since_snapshot:
-    - "README.md"
-    - "README.zh.md"
-    - "DEVELOPMENT.md"
-    - ".github/workflows/ci.yml"
-    - ".github/workflows/release.yml"
-    - ".github/dependabot.yml"
-    - ".releaserc.json"
-    - "scripts/generate-config-seed.sh"
-    - "scripts/inject-firstboot-defaults.sh"
-    - "scripts/update-verified-commit.sh"
+  generated_at: "2026-09-18"
+  base_commit: "11c3b88"
+  branch: "fix/rebase-verified-commit"
+  workspace_fingerprint: "openwrt-firmware-build"
+  structure_fingerprint: "setup-entry-scripts-build-shared-with-ci"
+  last_incremental_sync: "2026-09-18"
+  changed_modules_since_snapshot: []
   cache_status: valid
   invalidation_reason: null
 

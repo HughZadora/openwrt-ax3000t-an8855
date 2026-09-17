@@ -82,7 +82,7 @@ Typical outputs include:
 
 - `*-initramfs-factory.ubi` — temporary RAM boot image;
 - `*-squashfs-sysupgrade.bin` — persistent sysupgrade image;
-- `*-initramfs.itb` — initramfs image checked against the 26 MiB limit.
+- `*-initramfs-kernel.bin` — initramfs FIT image checked against the 26 MiB limit;
 
 The OpenClash package is written to:
 
@@ -121,14 +121,16 @@ ssh root@192.168.31.1 \
 ## Repository layout
 
 ```text
-patches/                         AN8855 patch set and verified source commit
-setup.sh                         Build orchestration entry point
-scripts/check-image-size.sh      Initramfs size validation
-scripts/generate-config-seed.sh  Reproducible package/config seed
-scripts/inject-firstboot-defaults.sh  First-boot defaults
-openwrt-ax3000t/                 Ignored OpenWrt source/build tree
-docs/                            Stable development and operations reference
-.github/workflows/               CI, release, and repository checks
+patches/                          AN8855 patch set and verified source commit
+setup.sh                          Build entry point (argument parsing + step order)
+scripts/build/                    One script per build step, shared with CI
+scripts/check-image-size.sh       Initramfs size gate and flash checklist
+scripts/repository-check          Repository baseline validation
+scripts/pull-request-check        Pull request contract validation
+scripts/update-verified-commit.sh VERIFIED_COMMIT maintenance (CI)
+openwrt-ax3000t/                  Ignored OpenWrt source/build tree
+docs/                             Stable development and operations reference
+.github/workflows/                CI, release, and repository checks
 ```
 
 ## Common commands
@@ -139,7 +141,7 @@ docs/                            Stable development and operations reference
 | Full build | `bash setup.sh build` |
 | Build OpenWrt 24.10 | `bash setup.sh --branch openwrt-24.10 build` |
 | Configure packages | `cd openwrt-ax3000t && make menuconfig` |
-| Compile OpenClash | `cd openwrt-ax3000t && make package/feeds/openclash/luci-app-openclash/compile V=s` |
+| Compile OpenClash apk | `bash scripts/build/compile-openclash-apk.sh` |
 | Validate initramfs size | `scripts/check-image-size.sh openwrt-ax3000t/bin/targets/mediatek/filogic` |
 | Repository baseline | `scripts/repository-check` |
 
