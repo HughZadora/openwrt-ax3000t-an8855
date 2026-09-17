@@ -81,7 +81,7 @@ scripts/build/                   # 每个构建步骤一个脚本，本地与 CI
 scripts/check-image-size.sh      # 路径不变（README/CI/文档引用）
 scripts/repository-check         # 路径不变（AGENTS.md/project.yaml/CI 引用）
 scripts/pull-request-check       # 路径不变
-scripts/update-verified-commit.sh# 只替换 sha 行，保留验证说明与产物记录
+scripts/update-verified-commit.sh  # 只替换 sha 行，保留验证说明与产物记录
 ```
 
 `.github/workflows/ci.yml` 删除了约 180 行内联重复逻辑，改为调用同一套脚本；所有 `run:` 块不再内联
@@ -127,7 +127,16 @@ GitHub context 插值（改用 `env:`），PR 事件下"不锁定 commit、仍�
 | B-3 | CI 配置了 ccache 但没有持久化缓存，180 分钟 job 超时对全新构建偏紧 | `ci.yml` 仅 `ccache --max-size` + `PATH`，无 `actions/cache`；README 称首次构建需数小时 | 无失败证据；新增缓存属新增基础设施，超出本次范围 |
 | B-4 | `scripts/update-verified-commit.sh` 以 `git push origin HEAD:master` 直推 | 脚本第 61 行起 | CI 权限模型如此设计（已在 workflow 中限制为非 PR + 成功 + master）；无故障证据 |
 | B-5 | CI 依赖仓库设置（Actions 读写权限）才能回推 VERIFIED_COMMIT | `permissions: contents: write` + 脚本 push | 属仓库设置而非代码问题，已在 `docs/development/guide.md` 的"Required Repository Settings"中说明 |
-| B-6 | `hugh` 名下的 OpenWrt 构建树（21 GB）保留在仓库内 | `openwrt-ax3000t/` 被忽略，仍在磁盘上 | 设计如此（本地构建树），删除与否不属本次范围 |
+| B-6 | 仓库内的 OpenWrt 构建树（21 GB） | `openwrt-ax3000t/` 被忽略，仍在磁盘上 | 设计如此（本地构建树），删除与否不属本次范围 |
+| B-7 | 固件自带 `dnsmasq`(=y)，而 OpenClash apk 依赖 `dnsmasq-full`(=m)；两者在包管理器层面冲突，README 上的 `apk add … luci-app-openclash-*.apk` 在真机上可能因冲突失败 | 构建配置实测：`CONFIG_PACKAGE_dnsmasq=y`、`CONFIG_PACKAGE_dnsmasq-full=m`、`CONFIG_PACKAGE_luci-app-openclash=m`；openclash feed Makefile 的 `DEPENDS:=+dnsmasq-full …` 与 base-files 变体包的 `CONFLICTS` 语义 | 无真机可验证（本环境不能刷机）；属上游 feed 的既定行为，非本次改动引入。真机安装失败时先 `apk del dnsmasq` 或改用 `--force-*`，或把 `dnsmasq-full` 提为镜像内 =y（会改变固件包集合，需你决策） |
+
+### 无害构建噪音（不改）
+
+完整构建日志中会出现形如 `make[4]: *** [GNUmakefile:108: abort-due-to-no-makefile] Error 1`
+（host libtool）与 `make[5]: *** [Makefile:3163: uninstall] Error 1`（host elfutils）的输出。
+它们紧随 `make[3]: […].prepared/…: Error 2 (ignored)` 这样的标记，即 **OpenWrt 构建系统显式忽略**
+的清理/探测失败（对不存在文件 `rm -f`、对非空目录 `rmdir`），不影响产物。按 rebuild-task 的要求
+把无害 warning 与真实错误区分开：本轮不把它们当作待修问题，也不在其中加入"确认过没问题"的补丁。
 
 ### C 类：仅风格/洁癖，未处理
 

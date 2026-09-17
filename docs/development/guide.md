@@ -56,7 +56,7 @@ shared with CI, so the local build and CI cannot drift apart.
 | 3 | `configure-feeds.sh` | Add the OpenClash feed, then `feeds update -a` + `feeds install -a` |
 | 4 | `configure-config.sh` | `make defconfig`, clear the project-owned symbols, append the seed, `make defconfig` |
 | 5 | `inject-firstboot-defaults.sh` | Install `99-router-home-custom` uci-defaults (LAN IP + open WiFi) |
-| 6 | `compile-firmware.sh` | `make -j$(nproc) V=s | tee build.log` (pipefail: a compile error fails the step) |
+| 6 | `compile-firmware.sh` | `make -j$(nproc) V=s \| tee build.log` (pipefail: a compile error fails the step) |
 | 7 | `report-artifacts.sh gate` | initramfs FIT size gate (`STRICT=1`, ≤ 26 MiB) |
 | 8 | `compile-openclash-apk.sh` | Build OpenClash separately as an apk and record its path |
 | 9 | `report-artifacts.sh summary` | Final size gate + apk sha256 + flash checklist |

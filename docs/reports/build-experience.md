@@ -104,7 +104,7 @@ CONFIG_DEVICE_xiaomi_mi-router-ax3000t-an8855=y
 | `staging_dir/host/bin/fakeroot` | **修改** | 硬编码旧路径 → 自动推导路径（`$(dirname "$0")`） |
 | `include/rootfs.mk` | **修改** | `-execdir` → `-exec`（绕过 WSL PATH 安全问题） |
 
-> 部分补丁文件位于 [`patches/`](patches/) 目录。
+> 部分补丁文件位于 [`patches/`](../../patches/) 目录。
 
 ---
 
