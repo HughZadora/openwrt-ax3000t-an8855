@@ -1,0 +1,124 @@
+#!/bin/sh
+# Project-specific invariants for the AX3000T/AN8855 firmware repository.
+#
+# The shared, byte-identical baseline check lives in scripts/repository-check
+# and is owned by the canon repository (HughZadora/repo-template). This file
+# holds only the invariants specific to this repository: the documentation
+# tree contract that the firmware build and runbooks depend on.
+#
+# POSIX-compatible shell: only standard shell, git, and basic text tools.
+# No project runtimes (Node, Python, Ruby, jq, yq) required.
+#
+# Exit status is non-zero when any check fails.
+set -eu
+
+fail=0
+
+pass() { printf 'ok: %s\n' "$1"; }
+fail_one() { printf 'FAIL: %s\n' "$1"; fail=1; }
+
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
+  printf 'FAIL: not inside a git repository\n'
+  exit 1
+}
+cd "$ROOT"
+
+# --- Required files -------------------------------------------------------
+for f in \
+  .editorconfig \
+  .gitattributes \
+  AGENTS.md \
+  README.md \
+  docs/INDEX.yaml \
+  .github/dependabot.yml \
+  .github/workflows/repository-baseline.yml \
+; do
+  if [ -f "$f" ]; then
+    pass "required file $f"
+  else
+    fail_one "missing required file $f"
+  fi
+done
+
+# --- Required documentation directories ------------------------------------
+# Rule: the directory exists AND contains at least one tracked file.
+# Untracked local files do not count: only git tracked content is truth.
+for d in \
+  adr \
+  architecture \
+  deployment \
+  development \
+  operations \
+  plans \
+  proposals \
+  reference \
+  reports \
+  runbooks \
+; do
+  if [ -d "docs/$d" ]; then
+    n=$(git ls-files "docs/$d" | wc -l | tr -d ' \t')
+    if [ "${n:-0}" -gt 0 ]; then
+      pass "docs/$d exists with tracked content"
+    else
+      fail_one "docs/$d exists but has no tracked files"
+    fi
+  else
+    fail_one "missing documentation directory docs/$d"
+  fi
+done
+
+# --- Manifest coverage ------------------------------------------------------
+# Plain text check only: confirm docs/INDEX.yaml declares every required
+# section key. This is intentionally not a YAML parser.
+if [ -f docs/INDEX.yaml ]; then
+  for s in \
+    architecture \
+    development \
+    deployment \
+    operations \
+    runbooks \
+    reference \
+    reports \
+    proposals \
+    adr \
+    plans \
+  ; do
+    if grep -q "^  $s:" docs/INDEX.yaml; then
+      pass "INDEX.yaml declares section $s"
+    else
+      fail_one "INDEX.yaml missing section $s"
+    fi
+  done
+fi
+
+# --- File hygiene ------------------------------------------------------------
+# Tracked `.keep` files must stay empty: they carry no rules or content.
+for k in $(git ls-files 'docs/*/.keep'); do
+  if [ -s "$k" ]; then
+    fail_one "placeholder not empty: $k"
+  fi
+done
+
+# Generated outputs and binaries do not belong in the baseline.
+if git ls-files | grep -q '^artifacts/'; then
+  fail_one "tracked artifacts/ directory is not part of the baseline"
+else
+  pass "no tracked artifacts/"
+fi
+
+# This script and the shared checker must stay executable in git.
+for repo_script in scripts/repository-check scripts/check-project-invariants; do
+  set -- $(git ls-files -s "$repo_script")
+  if [ "${1:-}" = "100755" ]; then
+    pass "$repo_script is executable in git"
+  else
+    fail_one "$repo_script lost its executable bit in git"
+  fi
+done
+
+# --- Result -------------------------------------------------------------------
+if [ "$fail" -ne 0 ]; then
+  printf 'project invariants failed\n'
+  exit 1
+fi
+printf 'project invariants success\n'

@@ -36,7 +36,7 @@ jobs:
           fi
 
       - name: Checkout source revision
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ steps.source.outputs.sha }}
           fetch-depth: 0
@@ -48,7 +48,7 @@ jobs:
 
       - name: Download validated master artifacts
         if: github.event_name == 'workflow_run'
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: firmware-master-${{ github.event.workflow_run.head_sha }}
           path: release-assets
@@ -67,7 +67,7 @@ jobs:
           test -s release-assets/SHA256SUMS.txt
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'

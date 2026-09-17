@@ -1,9 +1,13 @@
 name: Repository Baseline
 
 on:
-  workflow_call:
+  pull_request:
   push:
-    branches: [master]
+    branches: [main]
+  # Kept so a repository can call this workflow locally from another workflow.
+  # Cross-repository reuse is not used: the canon repository is private, and a
+  # public repository cannot call a private repository's reusable workflow.
+  workflow_call:
 
 permissions:
   contents: read
@@ -15,9 +19,22 @@ concurrency:
 jobs:
   repository-baseline:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
-        # Deliberate: stable major tag + Dependabot, no SHA pin (read-only baseline, no secrets).
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Run repository baseline check
         run: ./scripts/repository-check
+      - name: Run declared project validation
+        run: |
+          command=$(sed -n 's/^validation:[[:space:]]*//p' project.yaml \
+            | head -1)
+          if [ -n "$command" ]; then
+            printf 'running declared validation: %s\n' "$command"
+            sh -c "$command"
+          else
+            printf 'no validation command declared in project.yaml\n'
+          fi
+      - name: Run template behavior tests
+        if: hashFiles('tests/run.sh') != ''
+        run: ./tests/run.sh

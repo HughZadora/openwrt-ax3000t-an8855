@@ -47,7 +47,7 @@ jobs:
             artifact_prefix: openwrt-24.10
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0  # Needed for semantic-release and VERIFIED_COMMIT update
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -339,7 +339,7 @@ jobs:
           echo "ARTIFACT_DIR=$ARTIFACT_DIR" >> $GITHUB_ENV
 
       - name: Upload workflow artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: firmware-${{ matrix.artifact_prefix }}-${{ github.sha }}
           path: ${{ env.ARTIFACT_DIR }}/*

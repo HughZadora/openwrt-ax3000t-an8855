@@ -1,20 +1,7 @@
 version: 2
+
 updates:
-  - package-ecosystem: "github-actions"
-    directory: "/"
+  - package-ecosystem: github-actions
+    directory: /
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "03:00"
-    labels:
-      - "dependencies"
-      - "github-actions"
-    commit-message:
-      prefix: "ci(deps)"
-    groups:
-      github-actions:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
+      interval: weekly

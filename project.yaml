@@ -1,7 +1,6 @@
 version: 1
 name: openwrt-ax3000t-an8855
+type: firmware
 purpose: Build OpenWrt firmware for the Xiaomi Mi Router AX3000T AN8855 variant.
 status: active
-
-validation:
-  local: ./scripts/repository-check
+validation: ./scripts/repository-check && ./scripts/check-project-invariants
