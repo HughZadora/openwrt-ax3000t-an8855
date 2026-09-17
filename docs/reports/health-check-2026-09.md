@@ -128,6 +128,7 @@ GitHub context 插值（改用 `env:`），PR 事件下"不锁定 commit、仍�
 | B-4 | `scripts/update-verified-commit.sh` 以 `git push origin HEAD:master` 直推 | 脚本第 61 行起 | CI 权限模型如此设计（已在 workflow 中限制为非 PR + 成功 + master）；无故障证据 |
 | B-5 | CI 依赖仓库设置（Actions 读写权限）才能回推 VERIFIED_COMMIT | `permissions: contents: write` + 脚本 push | 属仓库设置而非代码问题，已在 `docs/development/guide.md` 的"Required Repository Settings"中说明 |
 | B-6 | 仓库内的 OpenWrt 构建树（21 GB） | `openwrt-ax3000t/` 被忽略，仍在磁盘上 | 设计如此（本地构建树），删除与否不属本次范围 |
+| B-8 | 本机与 CI 的宿主构建依赖不完全一致：本机缺 `swig`、`ccache`、`python3-setuptools`（CI 的 `Install dependencies` 装了 swig/ccache，未装 setuptools） | `command -v swig/ccache` 为空、`python3 -c "import setuptools"` 失败；本机 OpenWrt 源码树未使用 swig（所选包中无任何包引用它） | 已确认本轮所选包不需要 swig；ccache 仅影响速度；本轮构建未出现 setuptools 相关错误。属环境差异，记录而非修仓库 |
 | B-7 | 固件自带 `dnsmasq`(=y)，而 OpenClash apk 依赖 `dnsmasq-full`(=m)；两者在包管理器层面冲突，README 上的 `apk add … luci-app-openclash-*.apk` 在真机上可能因冲突失败 | 构建配置实测：`CONFIG_PACKAGE_dnsmasq=y`、`CONFIG_PACKAGE_dnsmasq-full=m`、`CONFIG_PACKAGE_luci-app-openclash=m`；openclash feed Makefile 的 `DEPENDS:=+dnsmasq-full …` 与 base-files 变体包的 `CONFLICTS` 语义 | 无真机可验证（本环境不能刷机）；属上游 feed 的既定行为，非本次改动引入。真机安装失败时先 `apk del dnsmasq` 或改用 `--force-*`，或把 `dnsmasq-full` 提为镜像内 =y（会改变固件包集合，需你决策） |
 
 ### 无害构建噪音（不改）
