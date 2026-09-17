@@ -1,3 +1,11 @@
+## [1.0.5](https://github.com/HughZadora/openwrt-ax3000t-an8855/compare/v1.0.4...v1.0.5) (2026-09-17)
+
+
+### Bug Fixes
+
+* **ci:** make baseline workflow reusable ([#7](https://github.com/HughZadora/openwrt-ax3000t-an8855/issues/7)) ([6a4648f](https://github.com/HughZadora/openwrt-ax3000t-an8855/commit/6a4648f877a32f7eb8095bc05d18e2d6b24f3b2d))
+* **release:** publish validated build artifacts ([#6](https://github.com/HughZadora/openwrt-ax3000t-an8855/issues/6)) ([0943e68](https://github.com/HughZadora/openwrt-ax3000t-an8855/commit/0943e68e35d0113a6e97ef432d08439b5d1852ab))
+
 ## [1.0.4](https://github.com/HughZadora/openwrt-ax3000t-an8855/compare/v1.0.3...v1.0.4) (2026-09-06)
 
 
