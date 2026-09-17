@@ -12,7 +12,7 @@ BUILD_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${BUILD_LIB_DIR}/env.sh"
 
 if [ $# -ge 1 ] && [ -n "${1:-}" ]; then
-    OPENWRT_DIR="$1"
+	OPENWRT_DIR="$1"
 fi
 [ -d "$OPENWRT_DIR" ] || die "OpenWrt 源码树不存在: $OPENWRT_DIR（先执行 prepare-source.sh）"
 
@@ -22,7 +22,7 @@ mkdir -p "$UCIDEF_DIR"
 log ""
 log "=== 步骤 6: 注入首次启动定制(IP 192.168.31.1 / WiFi 自动开启) ==="
 
-cat > "$UCIDEF_DIR/99-router-home-custom" <<'EOF'
+cat >"$UCIDEF_DIR/99-router-home-custom" <<'EOF'
 #!/bin/sh
 # 首次启动定制:
 #   1) LAN 默认 IP 改为 192.168.31.1 (Xiaomi 习惯)

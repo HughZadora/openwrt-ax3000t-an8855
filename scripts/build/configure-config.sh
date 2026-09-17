@@ -30,11 +30,11 @@ bash "${BUILD_LIB_DIR}/generate-config-seed.sh" "$OPENWRT_DIR"
 
 # 先清掉自有符号的旧行,避免 "key 多次定义" 警告与旧值残留(幂等)。
 while IFS= read -r sym; do
-    [ -n "$sym" ] || continue
-    sed -i "/^CONFIG_${sym}=/d; /^# CONFIG_${sym} is not set\$/d" .config
-done < "$OPENWRT_DIR/.config.owned-symbols"
+	[ -n "$sym" ] || continue
+	sed -i "/^CONFIG_${sym}=/d; /^# CONFIG_${sym} is not set\$/d" .config
+done <"$OPENWRT_DIR/.config.owned-symbols"
 
-cat "$OPENWRT_DIR/.config.seed" >> .config
+cat "$OPENWRT_DIR/.config.seed" >>.config
 rm -f "$OPENWRT_DIR/.config.seed" "$OPENWRT_DIR/.config.owned-symbols"
 
 make defconfig

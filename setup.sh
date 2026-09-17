@@ -38,36 +38,39 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_LIB_DIR="${SCRIPT_DIR}/scripts/build"
 bash -n "$0"
 for s in "${BUILD_LIB_DIR}"/*.sh; do
-    bash -n "$s"
+	bash -n "$s"
 done
 
 # ---- 参数解析:支持 --branch <分支> 与位置参数 build,任意顺序 ----
 BRANCH="main"
 BUILD_MODE=0
 while [ $# -gt 0 ]; do
-    case "$1" in
-        --branch)
-            [ $# -ge 2 ] || { echo "  ❌ --branch 需带分支名,示例: bash setup.sh --branch openwrt-24.10" >&2; exit 1; }
-            BRANCH="$2"
-            shift 2
-            ;;
-        --branch=*)
-            BRANCH="${1#*=}"
-            shift
-            ;;
-        build)
-            BUILD_MODE=1
-            shift
-            ;;
-        *)
-            echo "  ❌ 未知参数: $1 (支持: build / --branch <分支>)" >&2
-            exit 1
-            ;;
-    esac
+	case "$1" in
+	--branch)
+		[ $# -ge 2 ] || {
+			echo "  ❌ --branch 需带分支名,示例: bash setup.sh --branch openwrt-24.10" >&2
+			exit 1
+		}
+		BRANCH="$2"
+		shift 2
+		;;
+	--branch=*)
+		BRANCH="${1#*=}"
+		shift
+		;;
+	build)
+		BUILD_MODE=1
+		shift
+		;;
+	*)
+		echo "  ❌ 未知参数: $1 (支持: build / --branch <分支>)" >&2
+		exit 1
+		;;
+	esac
 done
 if [ -z "$BRANCH" ]; then
-    echo "  ❌ --branch 分支名为空" >&2
-    exit 1
+	echo "  ❌ --branch 分支名为空" >&2
+	exit 1
 fi
 
 # ---- 步骤编排 ----
@@ -80,15 +83,15 @@ bash "${BUILD_LIB_DIR}/configure-config.sh"
 bash "${BUILD_LIB_DIR}/inject-firstboot-defaults.sh"
 
 if [ "$BUILD_MODE" = "1" ]; then
-    bash "${BUILD_LIB_DIR}/compile-firmware.sh"
-    bash "${BUILD_LIB_DIR}/report-artifacts.sh" gate
-    bash "${BUILD_LIB_DIR}/compile-openclash-apk.sh"
-    bash "${BUILD_LIB_DIR}/report-artifacts.sh" summary
+	bash "${BUILD_LIB_DIR}/compile-firmware.sh"
+	bash "${BUILD_LIB_DIR}/report-artifacts.sh" gate
+	bash "${BUILD_LIB_DIR}/compile-openclash-apk.sh"
+	bash "${BUILD_LIB_DIR}/report-artifacts.sh" summary
 else
-    echo ""
-    echo "============================================"
-    echo "  准备完成!请执行:"
-    echo "    make menuconfig   # 可微调软件包(目标已预置)"
-    echo "    make -j\$(nproc) V=s | tee build.log"
-    echo "============================================"
+	echo ""
+	echo "============================================"
+	echo "  准备完成!请执行:"
+	echo "    make menuconfig   # 可微调软件包(目标已预置)"
+	echo "    make -j\$(nproc) V=s | tee build.log"
+	echo "============================================"
 fi

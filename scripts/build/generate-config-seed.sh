@@ -18,7 +18,10 @@
 set -euo pipefail
 
 OUT_DIR="${1:-.}"
-[ -d "$OUT_DIR" ] || { printf '输出目录不存在: %s\n' "$OUT_DIR" >&2; exit 1; }
+[ -d "$OUT_DIR" ] || {
+	printf '输出目录不存在: %s\n' "$OUT_DIR" >&2
+	exit 1
+}
 
 # ---------------------------------------------------------------------------
 # 1) .config 种子
@@ -33,7 +36,7 @@ OUT_DIR="${1:-.}"
 #    因此实际固件的 feeds 仍指向 downloads.openwrt.org。详见
 #    docs/reports/health-check-2026-09.md(待决策项 U1)。
 # ---------------------------------------------------------------------------
-cat > "$OUT_DIR/.config.seed" <<'CONFIG_EOF'
+cat >"$OUT_DIR/.config.seed" <<'CONFIG_EOF'
 CONFIG_TARGET_mediatek=y
 CONFIG_TARGET_mediatek_filogic=y
 CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_mi-router-ax3000t-an8855=y
@@ -121,7 +124,7 @@ CONFIG_EOF
 #    用途: 重复运行 setup.sh / CI 时，先删掉这些符号的旧行，避免
 #    "key 多次定义" 警告与旧值残留，再追加种子。
 # ---------------------------------------------------------------------------
-cat > "$OUT_DIR/.config.owned-symbols" <<'SYMBOLS_EOF'
+cat >"$OUT_DIR/.config.owned-symbols" <<'SYMBOLS_EOF'
 TARGET_mediatek
 TARGET_mediatek_filogic
 TARGET_mediatek_filogic_DEVICE_xiaomi_mi-router-ax3000t-an8855
@@ -355,4 +358,4 @@ PACKAGE_iftop
 SYMBOLS_EOF
 
 printf '  已生成 %s/.config.seed 与 %s/.config.owned-symbols (%s 个自有符号)\n' \
-    "$OUT_DIR" "$OUT_DIR" "$(grep -c . "$OUT_DIR/.config.owned-symbols")"
+	"$OUT_DIR" "$OUT_DIR" "$(grep -c . "$OUT_DIR/.config.owned-symbols")"

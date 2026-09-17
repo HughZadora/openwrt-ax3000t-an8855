@@ -28,20 +28,20 @@ TARGET_DIR="${TARGET_DIR:-${OPENWRT_DIR}/bin/targets/mediatek/filogic}"
 log() { printf '%s\n' "$*"; }
 warn() { printf '  ⚠️  %s\n' "$*" >&2; }
 die() {
-    printf '  ❌ %s\n' "$*" >&2
-    exit 1
+	printf '  ❌ %s\n' "$*" >&2
+	exit 1
 }
 
 # 仓库分支名 -> 上游 OpenWrt 分支名。
 # 本仓库 master 跟踪上游 main（上游 master 只是别名），其余分支同名。
 upstream_branch() {
-    case "${1:-}" in
-        master) printf 'main' ;;
-        *) printf '%s' "${1:-}" ;;
-    esac
+	case "${1:-}" in
+	master) printf 'main' ;;
+	*) printf '%s' "${1:-}" ;;
+	esac
 }
 
 # 需要 an8855 补丁与 commit 锁定的分支：仅上游 main。
 is_mainline_branch() {
-    [ "$(upstream_branch "${1:-}")" = "main" ]
+	[ "$(upstream_branch "${1:-}")" = "main" ]
 }
