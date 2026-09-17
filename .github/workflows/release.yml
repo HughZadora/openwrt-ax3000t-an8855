@@ -36,7 +36,7 @@ jobs:
           fi
 
       - name: Checkout source revision
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ steps.source.outputs.sha }}
           fetch-depth: 0
