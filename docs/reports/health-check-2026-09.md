@@ -156,6 +156,31 @@ GitHub context 插值（改用 `env:`），PR 事件下"不锁定 commit、仍�
 
 ## 7. 附：产物与复跑验证
 
+### 7.0 如何复现本轮检查
+
+```sh
+# 1) 静态/仓库级检查（无需构建，秒级）
+bash -n setup.sh scripts/* scripts/build/*
+./scripts/repository-check
+printf '## Summary\n\nx\n\n## Validation\n\nCloses #1\n' > /tmp/pr-body
+./scripts/pull-request-check /tmp/pr-body
+
+# 2) 仓库外独立工作树的「全新完整构建」（本次执行方式）
+EXT=/home/hugh/Projects/ax3000t-rebuild
+mkdir -p "$EXT"
+rsync -a --exclude openwrt-ax3000t/ --exclude .git/ --exclude .pi/ \
+      --exclude rebuild-task.md /path/to/repo/ "$EXT"/
+git clone --local /path/to/repo/openwrt-ax3000t "$EXT/openwrt-ax3000t"   # 干净源码树,无构建产物
+mkdir -p "$EXT/openwrt-ax3000t/dl" && cp -al /path/to/repo/openwrt-ax3000t/dl/. "$EXT/openwrt-ax3000t/dl/"
+( cd "$EXT" && bash setup.sh build )     # 步骤 1..9，产物与结论见 §7.2
+
+# 3) 收尾核对
+git -C "$EXT/openwrt-ax3000t" rev-parse HEAD      # 应等于 patches/VERIFIED_COMMIT 内容
+scripts/check-image-size.sh "$EXT/openwrt-ax3000t/bin/targets/mediatek/filogic"
+```
+
+
+
 ### 7.1 对照基线（重组前本地构建，2026-09-17）
 
 | 产物 | 体积 | sha256 |
