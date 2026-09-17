@@ -26,10 +26,9 @@ OUT_DIR="${1:-.}"
 # ---------------------------------------------------------------------------
 # 1) .config 种子
 #    含 OpenClash =m: 只编译为独立 apk,不进固件(避免 initramfs 超过原厂
-#    U-Boot 加载上限)。注意 luci-app-openclash 的 feed Makefile 用
-#    "default y if PACKAGE_luci-app-openclash" 声明了 kmod-inet-diag /
-#    kmod-nft-tproxy 与 dnsmasq-full nftset 变体，因此 CI 与本地固件都会
-#    带上这些 OpenClash 运行所需的组件。
+#    U-Boot 加载上限)。=m 只把 OpenClash 及其运行依赖(dnsmasq-full、ruby 等)
+#    编译成**模块包**,不进固件镜像:实测镜像 manifest 与不含该符号的基线完全一致
+#    (镜像内仍是 dnsmasq)。详见 docs/reports/health-check-2026-09.md §4.1。
 #
 #    下面的 CONFIG_VERSIONOPT / CONFIG_VERSION_REPO(USTC 镜像)只写在这里做
 #    记录: 两者受 CONFIG_IMAGEOPT 门控，普通源码构建的 .config 无法打开它们，
