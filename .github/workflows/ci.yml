@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       branch:
-        description: 'Branch to build (master or openwrt-24.10)'
+        description: 'Repo branch to build (master = upstream main, or openwrt-24.10)'
         required: false
         default: 'master'
         type: choice
@@ -33,6 +33,10 @@ jobs:
       contents: write  # Required for VERIFIED_COMMIT auto-update push
     strategy:
       fail-fast: false
+      # NOTE: `branch`/`artifact_prefix` use this repo's branch names.
+      # Repo `master` tracks upstream OpenWrt `main` (upstream HEAD);
+      # the Clone step resolves that mapping — never pass `branch`
+      # verbatim to `git clone --branch` for upstream.
       matrix:
         include:
           - branch: master
@@ -87,8 +91,17 @@ jobs:
 
       - name: Clone OpenWrt
         run: |
+          # BUILD_BRANCH is this repo's branch name. Repo `master` tracks
+          # upstream OpenWrt `main` (upstream HEAD; `master` there is only
+          # a non-canonical alias), so resolve explicitly instead of
+          # cloning `$BUILD_BRANCH` verbatim from upstream.
+          UPSTREAM_BRANCH="$BUILD_BRANCH"
+          if [ "$BUILD_BRANCH" = "master" ]; then
+            UPSTREAM_BRANCH="main"
+          fi
+          echo "Repo branch $BUILD_BRANCH -> upstream branch $UPSTREAM_BRANCH"
           if [ ! -d "$OPENWRT_DIR" ]; then
-            git clone --depth 1 --branch "$BUILD_BRANCH" --single-branch \
+            git clone --depth 1 --branch "$UPSTREAM_BRANCH" --single-branch \
               https://git.openwrt.org/openwrt/openwrt.git "$OPENWRT_DIR"
           fi
           cd "$OPENWRT_DIR"

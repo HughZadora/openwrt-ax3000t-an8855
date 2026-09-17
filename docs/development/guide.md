@@ -437,7 +437,7 @@ This project uses GitHub Actions for continuous integration and semantic-release
 ### CI Build Details
 
 **Matrix builds**:
-- `master` branch: Full pipeline with VERIFIED_COMMIT lock + AN8855 patches
+- `master` branch (this repo; clones upstream `main`): Full pipeline with VERIFIED_COMMIT lock + AN8855 patches
 - `openwrt-24.10` branch: Build without VERIFIED_COMMIT lock (official AN8855 target exists)
 
 **Artifacts** (90-day retention):
