@@ -22,7 +22,7 @@ set -eu
 #   model        required when project.yaml declares type model
 #   optional     if present, must be byte-identical to canon
 #   advisory     if present and different, warning only
-#@ scripts/repository-check all scripts/repository-check cf8534f5834a11458ccf6a3c8ebaa03e05116cc06b47f68857623b357c7ac753
+#@ scripts/repository-check all scripts/repository-check fd23ab873d30ab2a66415cb7276b4ef679cf651d0262b1077612133e9c61ce3b
 #@ .editorconfig all .editorconfig bc8c68c97ac4826849466c700b1a009a50449e1db3c7027553b131c9df2ae250
 #@ .gitattributes all .gitattributes d60f352d0db1404c70afb4bb8b2ca3fd1c610572aa40720e8a0b7baa7885418c
 #@ .markdownlint.yaml all .markdownlint.yaml 00f539730b6ac4bf96c1aa9384ebaaedae188a9f2b4d4362f643594bfc79940b
@@ -213,13 +213,15 @@ if [ -f mise.toml ]; then
   if [ "$TYPE" = "application" ]; then
     grep -Eq '^node[[:space:]]*=' mise.toml \
       || fail_one 'mise.toml must pin node for the application tier'
-    if [ -f pnpm-lock.yaml ]; then
+    # Only a tracked lock file defines the repository's package manager: a
+    # gitignored lock file created by a local install must not change the rule.
+    if git ls-files --error-unmatch pnpm-lock.yaml >/dev/null 2>&1; then
       # mise supports both a native backend key and npm-sourced "npm:pnpm".
       grep -Eq '^("?npm:)?pnpm"?[[:space:]]*=' mise.toml \
-        || fail_one 'mise.toml must pin pnpm when the repository uses pnpm-lock.yaml'
-    elif [ -f package-lock.json ]; then
+        || fail_one 'mise.toml must pin pnpm for a tracked pnpm-lock.yaml'
+    elif git ls-files --error-unmatch package-lock.json >/dev/null 2>&1; then
       grep -Eq '^("?npm:)?npm"?[[:space:]]*=' mise.toml \
-        || fail_one 'mise.toml must pin npm when the repository uses package-lock.json'
+        || fail_one 'mise.toml must pin npm for a tracked package-lock.json'
     fi
   fi
 fi
