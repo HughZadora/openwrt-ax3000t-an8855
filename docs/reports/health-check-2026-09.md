@@ -108,7 +108,7 @@ GitHub context 插值（改用 `env:`），PR 事件下"不锁定 commit、仍�
 
 | # | 现象 | 证据 | 根因 | 最小修复 | 复跑验证 |
 | --- | --- | --- | --- | --- | --- |
-| A-1 | 本地 `bash setup.sh build` 必然在步骤 8 失败：OpenClash apk 不存在 | `bin/packages/aarch64_cortex-a53/openclash/` 为空；`.config:5532` = `# CONFIG_PACKAGE_luci-app-openclash is not set`；`build.log` 止于该步骤（compile 耗时 0.08s）；无步骤 9 输出 | `setup.sh` 内联种子与 `scripts/generate-config-seed.sh` 两份拷贝相差一行 `CONFIG_PACKAGE_luci-app-openclash=m` | 种子收敛到单一来源（`scripts/build/generate-config-seed.sh`），本地与 CI 共用；apk 路径查找也收敛到一处 | 见 §4.2：`bash setup.sh build` 走到步骤 8/9 并产出 apk |
+| A-1 | 本地 `bash setup.sh build` 必然在步骤 8 失败：OpenClash apk 不存在 | `bin/packages/aarch64_cortex-a53/openclash/` 为空；`.config` 中该符号为 `# CONFIG_PACKAGE_luci-app-openclash is not set`（当时的 `.config` 已被本轮 run 重新生成，行号不再可复现，符号状态可由 `patches/VERIFIED_COMMIT` 与重构前的 `setup.sh` 内联种子核对）；`build.log` 止于该步骤（compile 耗时 0.08s）；无步骤 9 输出 | `setup.sh` 内联种子与 `scripts/generate-config-seed.sh` 两份拷贝相差一行 `CONFIG_PACKAGE_luci-app-openclash=m` | 种子收敛到单一来源（`scripts/build/generate-config-seed.sh`），本地与 CI 共用；apk 路径查找也收敛到一处 | 见 §4.2：`bash setup.sh build` 走到步骤 8/9 并产出 apk |
 | A-2 | 文档声称存在并不存在的门禁与文件，会误导后续 agent | `docs/development/guide.md` 引用 `README.zh.md`（×3）、`DEVELOPMENT.md`、`python3 .config/opencode/gates/...`、`actionlint`、`shellcheck`、`markdownlint-cli2`、`yaml-lint`、`.agents/config.yaml`、`.opencode/skill-config.yaml`；仓库与机器上均不存在 | 文档抄自另一个项目的模板，从未与本仓库核对 | 改为本仓库真实门禁表（bash -n / repository-check / pull-request-check / 体积门 / 完整构建），删除无效引用 | `grep -rn` 复查：`README.zh.md`/`DEVELOPMENT.md`/伪造门禁均无残留 |
 | A-3 | 文档描述 CI 触发频率错误 | guide 写 "daily cron (02:00 UTC)"，`ci.yml` 实为 `0 2 1 * *`（每月 1 日） | 文档与 workflow 漂移 | 文档改为"每月 1 日"，并补上另外两个 workflow 的真实触发条件 | 文档与 `ci.yml` 逐项对照 |
 | A-4 | 被跟踪的 agent 交接状态整体失真 | `.agent/project-state.md`/`project-status.md`/`state.yaml`：声称 `README.zh.md`/`DEVELOPMENT.md` 存在、CI/CD 未配置、`AGENT-MANAGED` block 存在、`reviewed_commit 1c5eff5`、`expires_at 2026-08-28` 已过期；引用的 `/home/hugh/agent-config/AGENTS.md` 不存在；仓库内外无任何消费者 | 上一任维护者的 agent 状态长期未同步 | 三份状态改写为可核验的事实，并明确"`docs/` 才是真相来源"；`plans/active/*` 保留为历史（不删除） | 三份文件内容与本报告/仓库当前状态逐条一致；`state.yaml` 通过 YAML 解析 |
@@ -123,7 +123,7 @@ GitHub context 插值（改用 `env:`），PR 事件下"不锁定 commit、仍�
 | # | 风险 | 证据/说明 | 不修理由 |
 | --- | --- | --- | --- |
 | B-1 | `.gitignore` 的 `*.bin` 会连带忽略任何合法的 `.bin` 入库需求 | `.gitignore` 含 `*.bin`/`*.img` | 当前无用例；删除规则会削弱"不提交固件产物"的保护 |
-| B-2 | 本地残留分支 `fix/pr-workflow`、`fix/publish-release-assets` 未合并且仅存在于本地 | `git branch --merged master` 未包含二者；其提交内容已通过 PR #6/#7 进入 `master` | 属"历史价值对象"，只记录不删除（范围约束） |
+| B-2 | 本地残留分支 `fix/pr-workflow`、`fix/publish-release-assets` 未合并且仅存在于本地 | `git branch --merged master` 未包含二者；同主题提交已通过 PR #6/#7 进入 `master`（未逐一比对内容是否完全一致，故只记录不删除） | 属"历史价值对象"，只记录不删除（范围约束） |
 | B-3 | CI 配置了 ccache 但没有持久化缓存，180 分钟 job 超时对全新构建偏紧 | `ci.yml` 仅 `ccache --max-size` + `PATH`，无 `actions/cache`；README 称首次构建需数小时 | 无失败证据；新增缓存属新增基础设施，超出本次范围 |
 | B-4 | `scripts/update-verified-commit.sh` 以 `git push origin HEAD:master` 直推 | 脚本第 61 行起 | CI 权限模型如此设计（已在 workflow 中限制为非 PR + 成功 + master）；无故障证据 |
 | B-5 | CI 依赖仓库设置（Actions 读写权限）才能回推 VERIFIED_COMMIT | `permissions: contents: write` + 脚本 push | 属仓库设置而非代码问题，已在 `docs/development/guide.md` 的"Required Repository Settings"中说明 |
