@@ -27,10 +27,10 @@ set -eu
 #@ .gitattributes all .gitattributes d60f352d0db1404c70afb4bb8b2ca3fd1c610572aa40720e8a0b7baa7885418c
 #@ .markdownlint.yaml all .markdownlint.yaml 00f539730b6ac4bf96c1aa9384ebaaedae188a9f2b4d4362f643594bfc79940b
 #@ .github/dependabot.yml all .github/dependabot.yml 9804ed1afdf6b83d6284bf86e24804121fedbd19000ac33dd332960618d00cb7
-#@ STANDARD.md all STANDARD.md 3fc1dc9fa0cd3df7334ed66ead9931ae3b7d8a2c25a91e37f220f586a0b4a6b2
+#@ STANDARD.md all STANDARD.md ead91345a7bc41d20e2469e2889d83c065081365f2582191db9acfee392e8efc
 #@ .github/workflows/repository-baseline.yml all .github/workflows/repository-baseline.yml e7fcebf018c6e7d942e86c36aa660f0762d4ad6a82b29528760b2a084aeb1c07
 #@ .prettierrc.json application .prettierrc.json d1dc28d81d35d108645c8d83fbf2bb4a9a840265bce8fdb01100e1fe62abeaaf
-#@ .prettierignore application .prettierignore ece177189922a7547f6111a9698b2ce30b8e92dd34bff6797bf5054a158bfcf5
+#@ .prettierignore application .prettierignore e5d4f6658f2cca9634b43a9f695a43cbc66c38e73dbb509e4c3f601889382f98
 #@ ruff.toml model ruff.toml cc4683bea34a7e600e2f60720e2f6b749a3945943b7ec0fb51ad806d8a7eb3c4
 #@ eslint.config.mjs advisory eslint.config.mjs 13b2dc90db2c7d493788ed109a4af59e1859da5deee5adf1c4f4af4c4be4c5ab
 # <<< canon-manifest
