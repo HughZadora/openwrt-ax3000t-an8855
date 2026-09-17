@@ -158,6 +158,11 @@ GitHub context 插值（改用 `env:`），PR 事件下"不锁定 commit、仍�
 的清理/探测失败（对不存在文件 `rm -f`、对非空目录 `rmdir`），不影响产物。按 rebuild-task 的要求
 把无害 warning 与真实错误区分开：本轮不把它们当作待修问题，也不在其中加入"确认过没问题"的补丁。
 
+### 其他说明
+
+- 本轮把本地工具状态（`.pi/`、`rebuild-task.md`）加入 `.gitignore`：它们不是仓库状态，
+  此前会让 `git status` 一直显示未跟踪杂物；未触及任何项目代码。
+
 ### C 类：仅风格/洁癖，未处理
 
 - 脚本命名风格不统一（`scripts/repository-check`、`scripts/pull-request-check` 无扩展名，其余为 `*.sh`）——路径是外部契约，不动。
