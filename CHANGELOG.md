@@ -1,3 +1,10 @@
+## [1.0.6](https://github.com/HughZadora/openwrt-ax3000t-an8855/compare/v1.0.5...v1.0.6) (2026-09-17)
+
+
+### Bug Fixes
+
+* **ci:** resolve repo master to upstream main when cloning ([86353f6](https://github.com/HughZadora/openwrt-ax3000t-an8855/commit/86353f62ba9e2436f129ef815d29c27ab29f5070))
+
 ## [1.0.5](https://github.com/HughZadora/openwrt-ax3000t-an8855/compare/v1.0.4...v1.0.5) (2026-09-17)
 
 
