@@ -1,4 +1,4 @@
-<!-- non-authoritative mirror: authoritative source: development/guide.md -->
+<!-- non-authoritative mirror: authoritative source: docs/development/guide.md -->
 # Development Guide — OpenWrt AX3000T AN8855
 
 > **Date**: 2026-08-21

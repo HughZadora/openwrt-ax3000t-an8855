@@ -1,4 +1,4 @@
-<!-- non-authoritative mirror: authoritative source: operations/home-router.md -->
+<!-- non-authoritative mirror: authoritative source: docs/operations/home-router.md -->
 # Xiaomi AX3000T (AN8855) 路由器 / Tailscale 组网配置说明
 
 > **时间**：2026-08-15
