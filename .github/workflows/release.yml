@@ -61,13 +61,15 @@ jobs:
           set -eu
           echo "Release assets:"
           find release-assets -maxdepth 1 -type f -printf '%f\n' | sort
-          test -n \
-          "$(find release-assets -maxdepth 1 -type f -name '*-initramfs-factory.ubi' -print -quit)"
-          test -n \
-          \
-          "$(find release-assets -maxdepth 1 -type f -name '*-squashfs-sysupgrade.bin' -print -quit)"
-          test -n \
-          "$(find release-assets -maxdepth 1 -type f -name 'luci-app-openclash*.apk' -print -quit)"
+          factory_asset=$(find release-assets -maxdepth 1 -type f \
+            -name '*-initramfs-factory.ubi' -print -quit)
+          test -n "$factory_asset"
+          squashfs_asset=$(find release-assets -maxdepth 1 -type f \
+            -name '*-squashfs-sysupgrade.bin' -print -quit)
+          test -n "$squashfs_asset"
+          clash_asset=$(find release-assets -maxdepth 1 -type f \
+            -name 'luci-app-openclash*.apk' -print -quit)
+          test -n "$clash_asset"
           test -s release-assets/SHA256SUMS.txt
 
       - name: Setup Node.js
