@@ -25,26 +25,26 @@ echo "Current OpenWrt commit: $CURRENT_SHA ($SHORT_SHA)"
 # Read existing VERIFIED_COMMIT
 EXISTING_SHA=""
 if [ -f "$REPO_PATCH_DIR/VERIFIED_COMMIT" ]; then
-    EXISTING_SHA=$(grep -vE '^\s*(#|$)' "$REPO_PATCH_DIR/VERIFIED_COMMIT" | head -n1 | tr -d '[:space:]' || true)
-    echo "Existing VERIFIED_COMMIT: $EXISTING_SHA"
+  EXISTING_SHA=$(grep -vE '^\s*(#|$)' "$REPO_PATCH_DIR/VERIFIED_COMMIT" | head -n1 | tr -d '[:space:]' || true)
+  echo "Existing VERIFIED_COMMIT: $EXISTING_SHA"
 fi
 
 # Check if already up to date
 if [ "$CURRENT_SHA" = "$EXISTING_SHA" ]; then
-    echo "✅ VERIFIED_COMMIT already up to date ($SHORT_SHA)"
-    exit 0
+  echo "✅ VERIFIED_COMMIT already up to date ($SHORT_SHA)"
+  exit 0
 fi
 
 echo "📝 Updating VERIFIED_COMMIT: ${EXISTING_SHA:-'(empty)'} → $CURRENT_SHA"
 
 if [ "$DRY_RUN" = "1" ]; then
-    echo "DRY-RUN: Would write $CURRENT_SHA to $REPO_PATCH_DIR/VERIFIED_COMMIT"
-    echo "DRY-RUN: Would commit and push"
-    exit 0
+  echo "DRY-RUN: Would write $CURRENT_SHA to $REPO_PATCH_DIR/VERIFIED_COMMIT"
+  echo "DRY-RUN: Would commit and push"
+  exit 0
 fi
 
 # Write new VERIFIED_COMMIT
-cat > "$REPO_PATCH_DIR/VERIFIED_COMMIT" <<EOF
+cat >"$REPO_PATCH_DIR/VERIFIED_COMMIT" <<EOF
 # VERIFIED_COMMIT - Auto-updated by CI on successful master build
 # Last updated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
 # Build: ${GITHUB_RUN_ID:-local}
@@ -55,14 +55,14 @@ EOF
 echo "✅ Written to $REPO_PATCH_DIR/VERIFIED_COMMIT"
 
 # Configure git for CI commit
-cd "$(dirname "$REPO_PATCH_DIR")"  # Back to repo root
+cd "$(dirname "$REPO_PATCH_DIR")" # Back to repo root
 git config user.name "github-actions[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
 # Check if there are changes to commit
 if git diff --quiet "$REPO_PATCH_DIR/VERIFIED_COMMIT"; then
-    echo "No changes to commit"
-    exit 0
+  echo "No changes to commit"
+  exit 0
 fi
 
 # Commit and push
