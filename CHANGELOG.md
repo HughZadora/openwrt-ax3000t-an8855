@@ -1,3 +1,16 @@
+## [1.0.7](https://github.com/HughZadora/openwrt-ax3000t-an8855/compare/v1.0.6...v1.0.7) (2026-09-18)
+
+
+### Bug Fixes
+
+* **check:** sync the regenerated canon manifest ([1f4cd7b](https://github.com/HughZadora/openwrt-ax3000t-an8855/commit/1f4cd7bbd538b8aa8e1d63e2ba4df54d110af9e0))
+* **ci:** stop the baseline workflow cancelling its own run ([dfd14b0](https://github.com/HughZadora/openwrt-ax3000t-an8855/commit/dfd14b00b36d77de21c9d4fc24dc770762ecf290))
+
+
+### Reverts
+
+* **scripts:** drop unintended shfmt reformatting ([910976d](https://github.com/HughZadora/openwrt-ax3000t-an8855/commit/910976d5bd7eda72c30496c64956e7e6e62ede30))
+
 ## [1.0.6](https://github.com/HughZadora/openwrt-ax3000t-an8855/compare/v1.0.5...v1.0.6) (2026-09-17)
 
 
