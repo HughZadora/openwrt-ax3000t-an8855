@@ -1,47 +1,47 @@
 #!/bin/bash
 # ============================================================
-# 一键构建脚本 - Xiaomi Mi Router AX3000T (AN8855)
+# One-click build script - Xiaomi Mi Router AX3000T (AN8855)
 #
-# 本脚本基于 OpenWrt 主线 (main, ~内核 6.18) 编译。
+# This script builds from OpenWrt mainline (main, ~kernel 6.18).
 #
-# 重要变化:
-#   * 主线 OpenWrt 已原生支持 AN8855 交换芯片 (驱动),但**没有**独立的
-#     an8855 启动布局目标,必须手工重建单 UBI 目标
-#     (xiaomi_mi-router-ax3000t-an8855)。patches/ 里的补丁会自动打上。
-#   * 原厂 U-Boot + AN8855 只能用**单 UBI 布局**才能持久启动;
-#     官方 stock 双分区目标 (xiaomi_mi-router-ax3000t) 在本机会落回恢复页,
-#     勿用。详见 docs/reference/router-state.md §0。
-#   * 无自定义 fwx 内核补丁,保持纯净主线。
-#   * OpenClash (luci-app-openclash) 以独立 apk 提供,不进固件(避免 initramfs
-#     超过原厂 U-Boot 加载体积上限);装时 apk add 并自动拉 luci-compat 等依赖。
-#   * 内核模块只能编译期打入(无法 apk 安装),本脚本预置了**精简工具集**:
+# Important changes:
+#   * Mainline OpenWrt natively supports the AN8855 switch chip (driver), but has no
+#     standalone an8855 boot-layout target; the single-UBI target must be rebuilt
+#     manually (xiaomi_mi-router-ax3000t-an8855). Patches in patches/ are applied automatically.
+#   * Stock U-Boot + AN8855 can only boot persistently with a **single-UBI layout**;
+#     the official stock dual-partition target (xiaomi_mi-router-ax3000t) falls back
+#     to the recovery page on this device. Do not use it. See docs/reference/router-state.md §0.
+#   * No custom fwx kernel patches; pure mainline.
+#   * OpenClash (luci-app-openclash) is provided as a separate apk, not in the firmware
+#     exceeds the stock U-Boot load size limit); apk add pulls luci-compat deps at install time.
+#   * Kernel modules can only be built in at compile time (cannot be apk-installed); this script pre-seeds a **trimmed tool set**:
 #     zram、iptables+nftables 双栈 + 核心 netfilter、wireguard/veth/tun 隧道、
 #     QoS(cake/fq-pie)、ext4、tcpdump/conntrack/ipset/tc-full 等诊断工具。
-#     原"完整工具集"含 179 个 kmod,使 initramfs-FIT 达 27.9MB,超过原厂 U-Boot
-#     加载上限(26MB 可启动)导致反复 panic/复位,已精简以适配。
+#     The original "full tool set" contained 179 kmods, pushing initramfs-FIT to 27.9MB, exceeding the stock U-Boot
+#     load limit (26MB boots) causing repeated panic/reset; trimmed to fit.
 #
 # 用法:
 #   1) bash setup.sh                     # 只做克隆 + feeds + 配置 (main 分支)
 #   2) bash setup.sh build               # 直接开始编译 (main 分支)
 #   3) bash setup.sh --branch openwrt-24.10 [build]
-#                                        # 换分支编译;非 main 分支跳过补丁与 commit 锁定
-#   (--branch 与 build 可任意顺序;默认 main,行为与旧版一致)
+#                                        # switch branch for building; non-main branches skip patches and commit locking
+#   (--branch and build can be in any order; defaults to main, same behaviour as the old version)
 # ============================================================
 
 set -e
 
-# 先做自身与依赖脚本的 bash 语法自检,语法错误第一时间失败,避免编到一半才崩。
+# Run bash syntax self-check on this script and its dependencies first, failing immediately on syntax errors to avoid crashing mid-build.
 bash -n "$0"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 bash -n "${SCRIPT_DIR}/scripts/check-image-size.sh"
 
-# ---- 参数解析:支持 --branch <分支> 与位置参数 build,任意顺序 ----
+# ---- Argument parsing: supports --branch <branch> and positional build, in any order ----
 BRANCH="main"
 BUILD_MODE=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --branch)
-            [ $# -ge 2 ] || { echo "  ❌ --branch 需带分支名,示例: bash setup.sh --branch openwrt-24.10" >&2; exit 1; }
+            [ $# -ge 2 ] || { echo "  ❌ --branch requires a branch name, e.g.: bash setup.sh --branch openwrt-24.10" >&2; exit 1; }
             BRANCH="$2"
             shift 2
             ;;
@@ -60,23 +60,23 @@ while [ $# -gt 0 ]; do
     esac
 done
 if [ -z "$BRANCH" ]; then
-    echo "  ❌ --branch 分支名为空" >&2
+    echo "  ❌ --branch branch name is empty" >&2
     exit 1
 fi
 
 export OPENWRT_DIR="$(pwd)/openwrt-ax3000t"
-# 外层仓库的 patches/ 目录(含 an8855 目标补丁),相对本脚本所在目录推导
+# The outer repository patches/ directory (with the an8855 target patches), relative to this script
 export REPO_PATCH_DIR="$(cd "$(dirname "$0")" && pwd)/patches"
-# 本仓库 scripts/ 目录(构建后体积校验等)
+# This repository scripts/ directory (post-build size check etc.)
 export SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)/scripts"
 OPENCLASH_URL="https://github.com/vernesong/OpenClash.git"
 OPENCLASH_CFG="src-git openclash ${OPENCLASH_URL}"
 
-# 锁定到一个已验证可编译的 main commit(防主线漂移导致补丁失效)。
-# 值由 patches/VERIFIED_COMMIT 提供;置空则跟随 main 最新(不推荐)。
+# Lock to a verified-buildable main commit (prevents mainline drift from invalidating patches).
+# Value provided by patches/VERIFIED_COMMIT; blank follows main latest (not recommended).
 # 切换/更新:构建前把新 sha 写进 patches/VERIFIED_COMMIT 并在 dry-run 全过后再 build。
 if [ -f "$REPO_PATCH_DIR/VERIFIED_COMMIT" ]; then
-    # 取第一行非空、非 # 注释行作为 commit sha
+    # Take the first non-empty, non-comment line as the commit sha
     OPENWRT_COMMIT="$(grep -vE '^\s*(#|$)' "$REPO_PATCH_DIR/VERIFIED_COMMIT" | head -n1 | tr -d '[:space:]' || true)"
 else
     OPENWRT_COMMIT=""
@@ -88,17 +88,17 @@ if [ ! -d "$OPENWRT_DIR" ]; then
     git clone --depth 1 --branch "$BRANCH" --single-branch \
         https://git.openwrt.org/openwrt/openwrt.git "$OPENWRT_DIR"
 fi
-# commit 锁定仅对 main 生效(VERIFIED_COMMIT 记录的是 main 分支已验证 commit)。
-# 其它分支(如 openwrt-24.10)历史不同,不能直接 checkout 该 sha,故跳过锁定。
+# Commit locking only applies to main (VERIFIED_COMMIT records the verified main-branch commit).
+# Other branches (e.g. openwrt-24.10) have different history and cannot checkout that sha directly, so locking is skipped.
 if [ "$BRANCH" = "main" ] && [ -n "$OPENWRT_COMMIT" ]; then
     echo "  锁定到已验证 commit: $OPENWRT_COMMIT"
     git -C "$OPENWRT_DIR" fetch --depth 1 origin "$OPENWRT_COMMIT" \
         || { echo "  无法获取 commit $OPENWRT_COMMIT,检查 patches/VERIFIED_COMMIT" >&2; exit 1; }
     git -C "$OPENWRT_DIR" checkout --force "$OPENWRT_COMMIT"
 elif [ "$BRANCH" = "main" ]; then
-    echo "  ⚠️ 未设置 OPENWRT_COMMIT(patches/VERIFIED_COMMIT 缺失),跟随 main 最新,补丁可能漂移失效。"
+    echo "  ⚠️ OPENWRT_COMMIT not set (patches/VERIFIED_COMMIT missing), following main latest, patches may drift."
 else
-    echo "  非 main 分支($BRANCH),跳过 commit 锁定与 an8855 补丁,跟随分支最新。"
+    echo "  Non-main branch ($BRANCH), skipping commit locking and an8855 patches, following branch latest."
 fi
 
 cd "$OPENWRT_DIR"
@@ -106,7 +106,7 @@ cd "$OPENWRT_DIR"
 echo ""
 echo "=== 步骤 2: 添加 OpenClash feed ==="
 # 注意:必须把 feed 加到官方的 feeds.conf.default(含 luci/packages 等官方源),
-# 而不是只新建 feeds.conf(那会让 OpenWrt 只认 feeds.conf 而丢掉官方源)。
+# rather than only creating feeds.conf (that would make OpenWrt only recognise feeds.conf and drop the official sources).
 if [ ! -f feeds.conf ]; then
     cp feeds.conf.default feeds.conf
 fi
@@ -121,45 +121,45 @@ else
 fi
 
 echo ""
-echo "=== 步骤 2.5: 应用 an8855 单 UBI 目标补丁(仅 main 分支,关键!) ==="
-# 主线 main 只有 stock 双分区 / ubootmod 目标,AN8855 + 原厂 U-Boot 需要
-# 独立的单 UBI 目标才能持久启动。补丁文件固化在外层仓库 patches/ 下。
-# 若已应用(设备已在 filogic.mk 中定义)则跳过,避免重复打补丁报错。
-# 非 main 分支(如 openwrt-24.10)官方自带 an8855 单 UBI 目标,无需补丁,整体跳过。
+echo "=== Step 2.5: Apply the an8855 single-UBI target patches (main branch only, critical!) ==="
+# Mainline main only has stock dual-partition / ubootmod targets; AN8855 + stock U-Boot requires
+# a standalone single-UBI target to boot persistently. Patch files are frozen in the outer repository patches/.
+# If already applied (device already defined in filogic.mk), skip to avoid duplicate patch errors.
+# Non-main branches (e.g. openwrt-24.10) ship the an8855 single-UBI target natively; no patches needed, skip entirely.
 if [ "$BRANCH" != "main" ]; then
-    echo "  非 main 分支($BRANCH),官方自带 an8855 单 UBI 目标,跳过补丁应用"
+    echo "  Non-main branch ($BRANCH), ships the an8855 single-UBI target, skipping patch application"
 elif grep -q "Device/xiaomi_mi-router-ax3000t-an8855" target/linux/mediatek/image/filogic.mk; then
-    echo "  an8855 目标已存在,跳过打补丁"
+    echo "  an8855 target already exists, skipping patch application"
 else
     echo "  复制 DTS ..."
     cp "${REPO_PATCH_DIR}/mt7981b-xiaomi-mi-router-ax3000t-an8855.dts" \
        target/linux/mediatek/dts/
-    echo "  应用 filogic.mk / platform.sh / 02_network 补丁 ..."
-    # 先 dry-run 全量校验,任一 hunk 不匹配(主线已漂移)则整体失败并给友好提示,
-    # 避免编到一半才因补丁问题崩溃。
+    echo "  Applying filogic.mk / platform.sh / 02_network patches ..."
+    # Dry-run full validation first; if any hunk fails to match (mainline drifted), fail entirely with a friendly message,
+    # avoiding a crash mid-build due to patch issues.
     for p in "${REPO_PATCH_DIR}"/*.patch; do
         echo "    dry-run: $(basename "$p")"
         if ! patch -p1 --forward --dry-run -i "$p"; then
-            echo "  ❌ 补丁 $(basename "$p") 无法应用:main 已漂移。" >&2
+            echo "  ❌ Patch $(basename "$p") cannot be applied: main has drifted." >&2
             echo "     方案A: 把 main 锁定到 patches/VERIFIED_COMMIT 里的已验证 commit。" >&2
-            echo "     方案B: 手工修此补丁后重试。" >&2
+            echo "     Plan B: fix this patch manually and retry." >&2
             exit 1
         fi
     done
     for p in "${REPO_PATCH_DIR}"/*.patch; do
         patch -p1 --forward -i "$p"
     done
-    echo "  已应用 an8855 目标补丁"
-    # 应用后显式校验关键符号确实出现,防止"看似成功实则没生效"。
+    echo "  an8855 target patches applied"
+    # After application, explicitly verify key symbols appeared, preventing "looks successful but did nothing".
     if ! grep -q "Device/xiaomi_mi-router-ax3000t-an8855" target/linux/mediatek/image/filogic.mk; then
-        echo "  ❌ 应用后 filogic.mk 未出现 an8855 目标,补丁未真正生效。" >&2
+        echo "  ❌ After application, filogic.mk does not contain the an8855 target; patch did not take effect." >&2
         exit 1
     fi
     if ! grep -q "xiaomi,mi-router-ax3000t-an8855" target/linux/mediatek/filogic/base-files/lib/upgrade/platform.sh; then
-        echo "  ❌ 应用后 platform.sh 未出现 an8855 升级入口,补丁未真正生效。" >&2
+        echo "  ❌ After application, platform.sh does not contain the an8855 upgrade entry; patch did not take effect." >&2
         exit 1
     fi
-    echo "  补丁生效校验通过。"
+    echo "  Patch effectiveness verification passed."
 fi
 
 echo ""
@@ -173,11 +173,11 @@ make defconfig
 
 echo ""
 echo "=== 步骤 5: 预置本设备目标 + OpenClash + LuCI ==="
-# 用标准 Kconfig 符号种子化 .config,再 defconfig 让它自动补全依赖。
+# Seed .config with standard Kconfig symbols, then run defconfig to auto-resolve dependencies.
 # (符号名遵循 OpenWrt metadata 约定:
 #    CONFIG_TARGET_<target>_<subtarget>_DEVICE_<device>)
-# 先清掉可能已存在的相关行,避免 "key 多次定义" 警告/被覆盖。
-# 清空我们即将写入的全部符号,确保脚本可重复执行(多次运行不产生重复 key)。
+# Clear any potentially existing related lines first, avoiding "key defined multiple times" warnings/overwrites.
+# Clear all symbols we are about to write, ensuring the script is re-runnable (multiple runs do not produce duplicate keys).
 for s in \
     TARGET_mediatek TARGET_mediatek_filogic \
     TARGET_mediatek_filogic_DEVICE_xiaomi_mi-router-ax3000t-an8855 \
@@ -287,8 +287,8 @@ CONFIG_TARGET_mediatek=y
 CONFIG_TARGET_mediatek_filogic=y
 CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_mi-router-ax3000t-an8855=y
 
-# 软件源(apk)镜像:换为中科大 USTC,国内下载快
-# 注意:VERSION_* 挂在 VERSIONOPT 菜单下,必须先 CONFIG_VERSIONOPT=y 才会生效
+# Package source (apk) mirror: switch to USTC for faster domestic downloads
+# Note: VERSION_* lives under the VERSIONOPT menu; CONFIG_VERSIONOPT=y must be set first
 CONFIG_VERSIONOPT=y
 CONFIG_VERSION_REPO="https://mirrors.ustc.edu.cn/openwrt/snapshots"
 
@@ -296,16 +296,16 @@ CONFIG_PACKAGE_luci=y
 CONFIG_PACKAGE_luci-ssl=y
 CONFIG_LUCI_LANG_zh_Hans=y
 
-# 剔除用不到的默认 LuCI 模块(路由器无用,保持菜单干净)
+# Remove unused default LuCI modules (useless for a router; keeps the menu clean)
 # CONFIG_PACKAGE_luci-mod-dsl is not set
 # CONFIG_PACKAGE_luci-i18n-dsl-zh-cn is not set
 
-# ⚠️ OpenClash 不再打进固件:其 apk 约 8MB(含 clash core),会使 initramfs-FIT
-# 超过原厂 U-Boot 的加载体积上限(26MB 可启动,34MB 起不来)。改为单独编译成
-# package,装时从 apk 源 `apk add luci-app-openclash` 即可。需要时在最后一步
-# make package/.../compile 单独产出。
-# ── 但 luci-compat(+luci-lua-runtime)必须保留:luci-base 渲染依赖其提供的
-#    luci.ucodebridge 模块,缺失会报 "module 'luci.ucodebridge' not found"。
+# ⚠️ OpenClash is no longer built into the firmware: its apk is ~8MB (with clash core), pushing initramfs-FIT
+# beyond the stock U-Boot load size limit (26MB boots, 34MB does not). Instead it is compiled separately as a
+# package; install with `apk add luci-app-openclash` from the apk source. When needed, the last step
+# make package/.../compile produces it separately.
+# ── But luci-compat (+luci-lua-runtime) must be kept: luci-base rendering depends on its
+#    luci.ucodebridge module; missing it reports "module 'luci.ucodebridge' not found".
 CONFIG_PACKAGE_luci-compat=y
 CONFIG_PACKAGE_luci-lua-runtime=y
 # CONFIG_PACKAGE_luci-app-openclash=y
@@ -315,13 +315,13 @@ CONFIG_PACKAGE_tailscale=y
 CONFIG_PACKAGE_luci-app-tailscale-community=y
 
 
-# ================= 工具集(精简版,控制体积以适配原厂 U-Boot) =================
-# 背景:5a26684 一次性加了 179 个 kmod,initramfs-FIT 撑到 27.9MB,超过原厂
-# U-Boot 加载上限(26MB 可启动,27.9MB 起不来,内核反复 panic/复位)。故只保留
-# 核心常用模块,去掉重文件系统(btrfs/xfs/ntfs3 等)、USB 驱动、异类隧道/协议、
-# 多余 sched 变体与启动高危项(mtdoops/softdog/phylink/of-mdio/fixed-phy),
-# 使 initramfs 回到 26MB 以内。更多功能在 make menuconfig 按需勾选,或单独
-# 编译为 apk 再装。
+# ================= Tool set (trimmed, size-controlled to fit the stock U-Boot) =================
+# Background: 5a26684 added 179 kmods at once, pushing initramfs-FIT to 27.9MB, exceeding the stock
+# U-Boot load limit (26MB boots, 27.9MB does not, kernel repeatedly panics/resets). Only
+# core commonly-used modules are kept; heavy filesystems (btrfs/xfs/ntfs3 etc.), USB drivers, unusual tunnels/protocols,
+# extra sched variants and boot-risk items (mtdoops/softdog/phylink/of-mdio/fixed-phy),
+# are removed, bringing initramfs back within 26MB. Additional features can be selected in make menuconfig,
+# or compiled as a separate apk and installed.
 # --- zram:内存压缩 ---
 CONFIG_PACKAGE_kmod-zram=y
 CONFIG_PACKAGE_zram-swap=y
@@ -357,12 +357,12 @@ CONFIG_PACKAGE_kmod-veth=y
 CONFIG_PACKAGE_kmod-tun=y
 CONFIG_PACKAGE_kmod-tcp-bbr=y
 
-# --- QoS / tc(保留 cake/fq-pie,其余按需) ---
+# --- QoS / tc (keeps cake/fq-pie; others as needed) ---
 CONFIG_PACKAGE_kmod-sched-core=y
 CONFIG_PACKAGE_kmod-sched-cake=y
 CONFIG_PACKAGE_kmod-sched-fq-pie=y
 
-# --- 文件系统(仅保留 ext4,重文件系统已剔除以控制体积) ---
+# --- Filesystem (ext4 only; heavy filesystems removed to control size) ---
 CONFIG_PACKAGE_kmod-fs-ext4=y
 
 # --- 连接跟踪 / IP 集 / 路由 / 流量工具 ---
@@ -392,12 +392,12 @@ EOF
 make defconfig
 
 echo ""
-echo "  已自动选中:"
+echo "  Auto-selected:"
 echo "    Target Profile -> Xiaomi Mi Router AX3000T (AN8855, 单 UBI, 原厂 U-Boot)"
-echo "    LuCI (+ SSL,中文)"
-echo "    OpenClash 仅单独编译为 apk(不进固件) / Tailscale + luci-app-tailscale-community"
+echo "    LuCI (+ SSL, Chinese)"
+echo "    OpenClash compiled only as a separate apk (not in firmware) / Tailscale + luci-app-tailscale-community"
 echo "    zram 内存压缩 / iptables+nftables 双栈 / 核心 netfilter / wireguard 隧道 / QoS(cake/fq-pie)"
-echo "    tcpdump / conntrack / ipset / tc-full / ext4 / 诊断工具 (精简版,适配原厂 U-Boot 体积上限)"
+echo "    tcpdump / conntrack / ipset / tc-full / ext4 / diagnostic tools (trimmed, fits the stock U-Boot size limit)"
 echo ""
 echo "  如需调整运行: make menuconfig"
 
@@ -408,8 +408,8 @@ mkdir -p "$UCIDEF_DIR"
 cat > "$UCIDEF_DIR/99-router-home-custom" <<'EOF'
 #!/bin/sh
 # 首次启动定制:
-#   1) LAN 默认 IP 改为 192.168.31.1 (Xiaomi 习惯)
-#   2) WiFi 默认开启 (2.4G / 5G,无加密),方便无网线时连接配置
+#   1) LAN default IP changed to 192.168.31.1 (Xiaomi convention)
+#   2) WiFi enabled by default (2.4G / 5G, unencrypted) for cable-free configuration
 
 # --- LAN IP ---
 uci -q set network.lan.ipaddr='192.168.31.1'
@@ -417,7 +417,7 @@ uci -q set network.lan.netmask='255.255.255.0'
 uci -q commit network
 
 # --- WiFi 启用 + 开放 SSID ---
-# 2.4G 与 5G 的 wifi-device section 通常是 radio0 / radio1
+# The 2.4G and 5G wifi-device sections are typically radio0 / radio1
 for radio in radio0 radio1; do
     [ -n "$(uci -q get wireless.$radio)" ] || continue
     uci -q set wireless.$radio.disabled='0'
@@ -443,22 +443,22 @@ EOF
 chmod +x "$UCIDEF_DIR/99-router-home-custom"
 echo "  已注入: $UCIDEF_DIR/99-router-home-custom"
 echo "  首次启动: LAN=192.168.31.1, WiFi SSID: OpenWrt-AX3000T / OpenWrt-AX3000T-5G (无加密)"
-echo "  请尽快在 LuCI 中设置 root 密码与 WiFi 加密!"
+echo "  Please set the root password and WiFi encryption in LuCI as soon as possible!"
 
 if [ "$BUILD_MODE" = "1" ]; then
     echo ""
-    echo "=== 步骤 7: 开始编译(固件不含 OpenClash) ==="
+    echo "=== Step 7: Start build (firmware does not include OpenClash) ==="
     echo "  运行: make -j\$(nproc) V=s | tee build.log"
     make -j"$(nproc)" V=s 2>&1 | tee build.log
 
     echo ""
-    echo "=== 步骤 7.5: initramfs 体积校验(原厂 U-Boot 上限) ==="
+    echo "=== Step 7.5: initramfs size validation (stock U-Boot limit) ==="
     TARGET_DIR="$OPENWRT_DIR/bin/targets/mediatek/filogic"
     STRICT=1 bash "${SCRIPT_DIR}/check-image-size.sh" "$TARGET_DIR" \
-        || { echo "  ❌ initramfs 超限,停止 OpenClash 编译以避免在坏产物上继续。" >&2; exit 1; }
+        || { echo "  ❌ initramfs over limit, stopping OpenClash build to avoid continuing on a bad output." >&2; exit 1; }
 
     echo ""
-    echo "=== 步骤 8: 单独编译 OpenClash 为 apk(不进固件,装时 apk add) ==="
+echo "=== Step 8: Build OpenClash separately as an apk (not in firmware, install with apk add) ==="
     echo "  运行: make package/feeds/openclash/luci-app-openclash/compile V=s"
     make package/feeds/openclash/luci-app-openclash/compile V=s 2>&1 | tee -a build.log
     # 校验 apk 确实生成
@@ -471,7 +471,7 @@ if [ "$BUILD_MODE" = "1" ]; then
     ls -lh $APK_GLOB
 
     echo ""
-    echo "=== 步骤 9: 产物汇总(体积校验 + sha256) ==="
+echo "=== Step 9: Output summary (size validation + sha256) ==="
     STRICT=1 bash "${SCRIPT_DIR}/check-image-size.sh" "$TARGET_DIR"
     echo ""
     echo "  OpenClash apk:"
@@ -483,7 +483,7 @@ else
     echo ""
     echo "============================================"
     echo "  准备完成!请执行:"
-    echo "    make menuconfig   # 可微调软件包(目标已预置)"
+    echo "    make menuconfig   # fine-tune packages (target pre-seeded)"
     echo "    make -j\$(nproc) V=s | tee build.log"
     echo "============================================"
 fi

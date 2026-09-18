@@ -1,3 +1,4 @@
+<!-- non-authoritative mirror: authoritative source: docs/development/guide.md -->
 # Development Guide — OpenWrt AX3000T AN8855
 
 > **Date**: 2026-08-21
@@ -233,8 +234,8 @@ tailscale up --accept-dns=false --advertise-routes=192.168.31.0/24 --snat-subnet
 
 | Band | SSID | Channel | Width | Encryption | TX Power |
 |------|------|---------|-------|------------|----------|
-| 2.4G | ZhuZhu Home | 1 (HE20) | 20MHz | sae-mixed (WPA3/WPA2) | 20 dBm |
-| 5G | ZhuZhu Home | 149 (HE80) | 80MHz | sae-mixed | 28 dBm |
+| 2.4G | 猪猪之家 | 1 (HE20) | 20MHz | sae-mixed (WPA3/WPA2) | 20 dBm |
+| 5G | 猪猪之家 | 149 (HE80) | 80MHz | sae-mixed | 28 dBm |
 
 **Note**: 5G ch 149 avoids DFS; 802.11r/ft_psk disabled (causes hostapd error on single AP).
 
@@ -504,7 +505,7 @@ cd openwrt-ax3000t
 ## References
 
 - [README.md](../../README.md) — User onboarding (English)
-- [README.md](../../README.md) — Getting started
+- [README.zh.md](../../README.zh.md) — 用户入门 (中文)
 - [home-router.md](../operations/home-router.md) — Router runtime config (Tailscale, network)
 - [build-experience.md](../reports/build-experience.md) — Build troubleshooting archive
 - [router-state.md](../reference/router-state.md) — Device partition/UBI/firmware state
