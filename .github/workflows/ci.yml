@@ -47,7 +47,7 @@ jobs:
             artifact_prefix: openwrt-24.10
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0  # Needed for semantic-release and VERIFIED_COMMIT update
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -111,10 +111,12 @@ jobs:
         run: |
           cd "$OPENWRT_DIR"
           if [ -f "$REPO_PATCH_DIR/VERIFIED_COMMIT" ]; then
-            OPENWRT_COMMIT=$(grep -vE '^\s*(#|$)' "$REPO_PATCH_DIR/VERIFIED_COMMIT" | head -n1 | tr -d '[:space:]' || true)
+            OPENWRT_COMMIT=$(grep -vE '^\s*(#|$)' "$REPO_PATCH_DIR/VERIFIED_COMMIT" | \
+            head -n1 | tr -d '[:space:]' || true)
             if [ -n "$OPENWRT_COMMIT" ]; then
               echo "Locking to VERIFIED_COMMIT: $OPENWRT_COMMIT"
-              git fetch --depth 1 origin "$OPENWRT_COMMIT" || { echo "Failed to fetch commit $OPENWRT_COMMIT"; exit 1; }
+              git fetch --depth 1 origin "$OPENWRT_COMMIT" || { echo \
+              "Failed to fetch commit $OPENWRT_COMMIT"; exit 1; }
               git checkout --force "$OPENWRT_COMMIT"
             else
               echo "⚠️ VERIFIED_COMMIT empty, following main latest (patches may drift)"
@@ -127,7 +129,8 @@ jobs:
         if: ${{ matrix.verified_commit_lock }}
         run: |
           cd "$OPENWRT_DIR"
-          if grep -q "Device/xiaomi_mi-router-ax3000t-an8855" target/linux/mediatek/image/filogic.mk; then
+          if grep -q "Device/xiaomi_mi-router-ax3000t-an8855" \
+          target/linux/mediatek/image/filogic.mk; then
             echo "an8855 target already exists, skipping patch"
           else
             echo "Copying DTS..."
@@ -145,11 +148,13 @@ jobs:
               patch -p1 --forward -i "$p"
             done
             # Verify patch applied
-            if ! grep -q "Device/xiaomi_mi-router-ax3000t-an8855" target/linux/mediatek/image/filogic.mk; then
+            if ! grep -q "Device/xiaomi_mi-router-ax3000t-an8855" \
+            target/linux/mediatek/image/filogic.mk; then
               echo "❌ Patch verification failed - an8855 target not found"
               exit 1
             fi
-            if ! grep -q "xiaomi,mi-router-ax3000t-an8855" target/linux/mediatek/filogic/base-files/lib/upgrade/platform.sh; then
+            if ! grep -q "xiaomi,mi-router-ax3000t-an8855" \
+            target/linux/mediatek/filogic/base-files/lib/upgrade/platform.sh; then
               echo "❌ Patch verification failed - platform.sh upgrade entry missing"
               exit 1
             fi
@@ -163,7 +168,8 @@ jobs:
             cp feeds.conf.default feeds.conf
           fi
           if ! grep -q "OpenClash" feeds.conf; then
-            printf '# OpenClash (Clash/Mihomo 客户端)\nsrc-git openclash %s\n' "${OPENCLASH_URL}" >> feeds.conf
+            printf '# OpenClash (Clash/Mihomo 客户端)\nsrc-git openclash %s\n' \
+            "${OPENCLASH_URL}" >> feeds.conf
             echo "Added OpenClash feed"
           fi
 
@@ -309,7 +315,8 @@ jobs:
         run: |
           cd "$OPENWRT_DIR"
           make package/feeds/openclash/luci-app-openclash/compile V=s 2>&1 | tee -a build.log
-          APK_PATH=$(find "$OPENWRT_DIR/bin/packages" -type f -name 'luci-app-openclash*.apk' -print -quit)
+          APK_PATH=$(find "$OPENWRT_DIR/bin/packages" -type f -name \
+          'luci-app-openclash*.apk' -print -quit)
           if [ -z "$APK_PATH" ]; then
             echo "❌ OpenClash APK not generated"
             find "$OPENWRT_DIR/bin/packages" -type f -iname '*openclash*.apk' -print || true
@@ -339,7 +346,7 @@ jobs:
           echo "ARTIFACT_DIR=$ARTIFACT_DIR" >> $GITHUB_ENV
 
       - name: Upload workflow artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: firmware-${{ matrix.artifact_prefix }}-${{ github.sha }}
           path: ${{ env.ARTIFACT_DIR }}/*

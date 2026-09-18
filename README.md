@@ -172,3 +172,11 @@ publishes a GitHub Release with the validated firmware/APK assets.
 ## License
 
 GPL-2.0, consistent with OpenWrt.
+
+## Validation
+
+Run the repository baseline check locally:
+
+```sh
+./scripts/repository-check
+```

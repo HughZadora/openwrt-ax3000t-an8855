@@ -54,3 +54,11 @@ distinguishing change-related, pre-existing, and environment failures.
 
 If this repository provides `scripts/repository-check`, it is part of the base
 repository validation.
+
+## Working rules
+
+- Read `README.md` and `STANDARD.md` before making non-trivial changes.
+- Verify a reported problem before fixing it and prefer the smallest systemic
+  fix that addresses the root cause.
+- Never commit secrets, credentials, or sensitive local configuration.
+- Never edit a shared file locally; change the canon and roll it out.
