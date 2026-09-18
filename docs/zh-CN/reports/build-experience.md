@@ -1,4 +1,4 @@
-<!-- non-authoritative mirror: authoritative source: reports/build-experience.md -->
+<!-- non-authoritative mirror: authoritative source: docs/reports/build-experience.md -->
 # Xiaomi Mi Router AX3000T (AN8855) OpenWrt 编译实战总结
 
 > **时间**：2026-08-15（原始记录 2026-06，2026-08 更新）

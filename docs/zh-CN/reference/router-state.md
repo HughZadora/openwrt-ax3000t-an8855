@@ -1,4 +1,4 @@
-<!-- non-authoritative mirror: authoritative source: reference/router-state.md -->
+<!-- non-authoritative mirror: authoritative source: docs/reference/router-state.md -->
 # 路由器当前状态记录 (AX3000T AN8855)
 
 > **时间**：2026-08-15（最后更新 2026-08-14）
