@@ -14,8 +14,8 @@ mkdir -p "$UCIDEF_DIR"
 cat > "$UCIDEF_DIR/99-router-home-custom" <<'EOF'
 #!/bin/sh
 # 首次启动定制:
-#   1) LAN 默认 IP 改为 192.168.31.1 (Xiaomi 习惯)
-#   2) WiFi 默认开启 (2.4G / 5G,无加密),方便无网线时连接配置
+#   1) LAN default IP changed to 192.168.31.1 (Xiaomi convention)
+#   2) WiFi enabled by default (2.4G / 5G, unencrypted) for cable-free configuration
 
 # --- LAN IP ---
 uci -q set network.lan.ipaddr='192.168.31.1'
@@ -23,7 +23,7 @@ uci -q set network.lan.netmask='255.255.255.0'
 uci -q commit network
 
 # --- WiFi 启用 + 开放 SSID ---
-# 2.4G 与 5G 的 wifi-device section 通常是 radio0 / radio1
+# The 2.4G and 5G wifi-device sections are typically radio0 / radio1
 for radio in radio0 radio1; do
     [ -n "$(uci -q get wireless.$radio)" ] || continue
     uci -q set wireless.$radio.disabled='0'

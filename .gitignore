@@ -24,7 +24,7 @@ openwrt_compile_database/
 build.log
 *.log
 
-# 忽略大文件追踪（固件仅保留参考）
+# Ignore large-file tracking (firmware kept for reference only)
 *.bin
 *.img
 
