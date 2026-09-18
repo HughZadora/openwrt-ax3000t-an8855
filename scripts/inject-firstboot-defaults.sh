@@ -11,7 +11,7 @@ OPENWRT_DIR="${1:?Usage: $0 <openwrt-dir>}"
 UCIDEF_DIR="$OPENWRT_DIR/package/base-files/files/etc/uci-defaults"
 mkdir -p "$UCIDEF_DIR"
 
-cat >"$UCIDEF_DIR/99-router-home-custom" <<'EOF'
+cat > "$UCIDEF_DIR/99-router-home-custom" <<'EOF'
 #!/bin/sh
 # 首次启动定制:
 #   1) LAN 默认 IP 改为 192.168.31.1 (Xiaomi 习惯)

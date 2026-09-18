@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-cat >.config.seed <<'CONFIG_EOF'
+cat > .config.seed <<'CONFIG_EOF'
 CONFIG_TARGET_mediatek=y
 CONFIG_TARGET_mediatek_filogic=y
 CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_mi-router-ax3000t-an8855=y
