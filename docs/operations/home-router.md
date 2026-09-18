@@ -1,81 +1,102 @@
-# Xiaomi AX3000T (AN8855) 路由器 / Tailscale 组网配置说明
+# Xiaomi AX3000T (AN8855) router / Tailscale networking configuration
 
-> **时间**：2026-08-15
-> **作者**：hugh
-> **适用范围**：Xiaomi Mi Router AX3000T（AN8855）上 OpenWrt 配置与 Tailscale 组网交接
-> **文档目的**：记录设备当前配置、组网拓扑与交接要点，供后续维护/换手参考。
-> **状态**：生效（对应 OpenWrt SNAPSHOT r0-9f3157a）
+> **Date**: 2026-08-15
+> **Author**: hugh
+> **Scope**: OpenWrt configuration and Tailscale networking handover on the
+> Xiaomi Mi Router AX3000T (AN8855)
+> **Purpose**: record the device's current configuration, network topology, and
+> handover points, for later maintenance or handover reference.
+> **Status**: effective (corresponds to OpenWrt SNAPSHOT r0-9f3157a)
 
-## 变更记录
+## Change log
 
-| 版本 | 日期 | 作者 | 变更说明 |
-|------|------|------|----------|
-| 1.0 | 2026-08-15 | hugh | 补充 DOC_HEADER 头部（内容同原稿） |
+| Version | Date | Author | Description |
+|---------|------|--------|-------------|
+| 1.0 | 2026-08-15 | hugh | Added the DOC_HEADER block (content matches the original) |
 
-## 项目目标
+## Project goal
 
-记录 `192.168.31.1` 这台 **Xiaomi Mi Router AX3000T（AN8855 交换机）** 的配置与交接要点，
-重点是 PPPoE 拨号上网 + 单臂访问光猫、Tailscale 组网（通告子网），以及与办公室节点互连。
+Record the configuration and handover points of the **Xiaomi Mi Router
+AX3000T (AN8855 switch)** at `192.168.31.1`, focusing on PPPoE broadband +
+single-arm access to the optical modem, Tailscale networking (subnet
+advertisement), and office-node interconnection.
 
-## 设备与环境
+## Device and environment
 
-- 型号：Xiaomi Mi Router AX3000T（AN8855 5 口千兆交换机）
-- 系统：OpenWrt SNAPSHOT `r0-9f3157a`，架构 `aarch64_cortex-a53`
-- 主机名：`OpenWrt`；Tailscale 节点：`xiaomi-ax3000t`，组网 IP **`100.104.191.81`**
-- 登录：`ssh root@192.168.31.1`（本机 LAN）
+- Model: Xiaomi Mi Router AX3000T (AN8855 5-port gigabit switch)
+- System: OpenWrt SNAPSHOT `r0-9f3157a`, architecture `aarch64_cortex-a53`
+- Hostname: `OpenWrt`; Tailscale node: `xiaomi-ax3000t`, network IP
+  **`100.104.191.81`**
+- Login: `ssh root@192.168.31.1` (local LAN)
 
-## 网络拓扑与角色
+## Network topology and roles
 
-- LAN：`br-lan` = `192.168.31.1/24`（桥接 `lan2/lan3/lan4`，即 AN8855 下游口）
-- WAN：`wan@eth0`，**PPPoE 拨号**（账号/密码见 `/etc/config/network`），`pppoe-wan` 获公网 `100.77.x`
-- 单臂访问光猫：同一物理 WAN 口上另配静态 `192.168.1.99/24` 用于访问光猫 `192.168.1.1`
-- 角色：家中路由器；同时是 Tailscale 组网节点，**通告子网 `192.168.31.0/24`**，
-  使远端组网设备能经它访问家庭局域网。
+- LAN: `br-lan` = `192.168.31.1/24` (bridging `lan2/lan3/lan4`, the AN8855
+  downstream ports)
+- WAN: `wan@eth0`, **PPPoE dial-up** (credentials in `/etc/config/network`),
+  `pppoe-wan` receives public `100.77.x`
+- Single-arm modem access: a second static `192.168.1.99/24` on the same
+  physical WAN port for reaching the optical modem `192.168.1.1`
+- Role: home router; also a Tailscale network node, **advertising subnet
+  `192.168.31.0/24`**, allowing remote network devices to reach the home LAN
+  through it.
 
-## 关键配置
+## Key configuration
 
-### 网络（/etc/config/network）
+### Network (/etc/config/network)
 
-| 接口 | 协议 | 地址 | 说明 |
-|------|------|------|------|
-| `br-lan` | static | `192.168.31.1/24` | LAN，桥接 `lan2/lan3/lan4` |
-| `wan` | pppoe | 拨号 | 上行 PPPoE 拨号上网 |
-| `Modem` | static | `192.168.1.99/24`，device=`wan` | 单臂访问光猫 `192.168.1.1`（与 PPPoE 共用 WAN 口） |
-| `tailscale0` | TUN | `100.104.191.81/32` | tailscaled 动态创建，不在 network 配置里 |
+| Interface | Protocol | Address | Description |
+|-----------|----------|---------|-------------|
+| `br-lan` | static | `192.168.31.1/24` | LAN, bridging `lan2/lan3/lan4` |
+| `wan` | pppoe | dial-up | Upstream PPPoE broadband |
+| `Modem` | static | `192.168.1.99/24`, device=`wan` | Single-arm access to the modem `192.168.1.1` (shares the WAN port with PPPoE) |
+| `tailscale0` | TUN | `100.104.191.81/32` | Created dynamically by tailscaled, not in the network config |
 
-要点：
-- `Modem` 接口的 `device` 必须是 `wan`（DSA 从端口），不能是 `eth0`（master CPU 口），
-  否则 ARP 不通、ping 光猫失败。
-- `Modem` 接口当前配了 `gateway 192.168.1.1`，但实测**不会抢默认路由**（默认路由由 PPPoE 的
-  `default via 100.77.x dev pppoe-wan` 提供，上网正常）。若出现上网走光猫的异常，可去掉该 gateway。
+Key points:
+- The `Modem` interface's `device` must be `wan` (DSA downstream port), not
+  `eth0` (master CPU port); otherwise ARP fails and pinging the modem fails.
+- The `Modem` interface currently has `gateway 192.168.1.1` configured, but in
+  practice it **does not steal the default route** (the default route comes
+  from PPPoE via `default via 100.77.x dev pppoe-wan`, and internet access
+  works normally). If traffic starts going through the modem, remove that
+  gateway.
 
 ### Tailscale
-- 节点 `xiaomi-ax3000t`，组网 IP `100.104.191.81`，状态：已登录、运行中
-- **通告路由**：`192.168.31.0/24`（已在控制台审批，`PrimaryRoutes` 生效），`NoSNAT: true`（保留真实源地址）
-- `CorpDNS: false`（**MagicDNS 关闭**；访问一律用 IP）
-- `RouteAll: false`（本机不主动接受其它节点通告的路由——仅通告方需要，按需开启）
-- `RunSSH: false`；开机自启；状态持久化 `/etc/tailscale/tailscaled.state`
-- 自动恢复：init.d 脚本已含 `procd respawn`，tailscaled 崩溃自动重启；断网重连由内置机制处理
+- Node `xiaomi-ax3000t`, network IP `100.104.191.81`, status: logged in, running
+- **Advertised routes**: `192.168.31.0/24` (approved in the console,
+  `PrimaryRoutes` effective), `NoSNAT: true` (preserves real source addresses)
+- `CorpDNS: false` (**MagicDNS off**; access exclusively by IP)
+- `RouteAll: false` (this node does not accept routes advertised by other
+  nodes — only the advertiser needs this; enable as needed)
+- `RunSSH: false`; starts on boot; state persisted to
+  `/etc/tailscale/tailscaled.state`
+- Auto-recovery: the init.d script includes `procd respawn`, so tailscaled
+  restarts automatically on crash; disconnection reconnection is handled by
+  the built-in mechanism
 
-### 防火墙（firewall4 / nftables）
-- zone：`lan`（ACCEPT）、`wan`（REJECT，masq）、`modem`（ACCEPT，masq，network=`Modem`）、
-  **`tailscale`**（ACCEPT，network=`tailscale`）
-- 转发：`lan→wan`、`lan→modem`、`tailscale→lan`、`lan→tailscale`（后两条实现组网↔局域网互访）
-- 本机自身被组网访问：Tailscale 自带 `ts-input`（`iifname "tailscale0*" accept`）放行 TCP
+### Firewall (firewall4 / nftables)
+- Zones: `lan` (ACCEPT), `wan` (REJECT, masq), `modem` (ACCEPT, masq,
+  network=`Modem`), **`tailscale`** (ACCEPT, network=`tailscale`)
+- Forwards: `lan→wan`, `lan→modem`, `tailscale→lan`, `lan→tailscale` (the
+  latter two implement network ↔ LAN mutual access)
+- This device itself being accessed via the network: Tailscale's built-in
+  `ts-input` (`iifname "tailscale0*" accept`) allows TCP
 
-## 关键配置 1：单臂拨号 + 访问光猫
+## Key configuration 1: single-arm dial-up + modem access
 
-一根 WAN 线同时 PPPoE 拨号上网、又能访问光猫管理页：
+One WAN cable simultaneously PPPoE dials for broadband and accesses the modem
+management page:
 
 ```sh
-# Modem 接口（静态 192.168.1.99 绑到 wan，与 PPPoE 同物理口）
+# Modem interface (static 192.168.1.99 bound to wan, same physical port as PPPoE)
 uci set network.Modem.device='wan'
 uci set network.Modem.proto='static'
 uci set network.Modem.ipaddr='192.168.1.99'
 uci set network.Modem.netmask='255.255.255.0'
 uci commit network
 
-# modem zone：允许入站 + masq（让 LAN 设备访问光猫时，光猫看到的源是 192.168.1.99）
+# modem zone: allow inbound + masq (so LAN devices accessing the modem appear
+# to the modem as source 192.168.1.99)
 uci set firewall.@zone[2].name='modem'
 uci set firewall.@zone[2].network='Modem'
 uci set firewall.@zone[2].input='ACCEPT'
@@ -88,15 +109,16 @@ uci set firewall.@forwarding[-1].dest='modem'
 uci commit firewall
 ```
 
-验证：`echo -e "GET / HTTP/1.0\r\n\r" | nc 192.168.1.1 80` 应返回 `HTTP/1.0 200 OK`。
+Verification: `echo -e "GET / HTTP/1.0\r\n\r" | nc 192.168.1.1 80` should
+return `HTTP/1.0 200 OK`.
 
-## 关键配置 2：Tailscale 子网通告（远端访问家庭局域网）
+## Key configuration 2: Tailscale subnet advertisement (remote access to the home LAN)
 
 ```sh
-# 通告 192.168.31.0/24，保留真实源地址，保持 MagicDNS 关闭
+# Advertise 192.168.31.0/24, preserve real source addresses, keep MagicDNS off
 tailscale up --accept-dns=false --advertise-routes=192.168.31.0/24 --snat-subnet-routes=false
 
-# 创建 tailscale zone + 转发（组网 ↔ 局域网互访）
+# Create the tailscale zone + forwarding (network ↔ LAN mutual access)
 uci set network.tailscale='interface'
 uci set network.tailscale.ifname='tailscale0'
 uci set network.tailscale.proto='none'
@@ -119,53 +141,73 @@ uci set firewall.@forwarding[-1].dest='tailscale'
 uci commit firewall
 ```
 
-**远端侧要求：**
-1. 子网路由 `192.168.31.0/24` 已在 Tailscale 控制台审批（`PrimaryRoutes` 生效）
-2. 远端客户端需开启 **accept-routes**，例如 Ubuntu：`tailscale up --reset --accept-routes --accept-dns=false --ssh`
-3. 生效后远端可 `ping 192.168.31.x` 直接访问家庭局域网设备（走直连隧道，约 10–70ms）
+**Remote-side requirements:**
+1. Subnet route `192.168.31.0/24` approved in the Tailscale console
+   (`PrimaryRoutes` effective)
+2. Remote clients need **accept-routes** enabled, for example Ubuntu:
+   `tailscale up --reset --accept-routes --accept-dns=false --ssh`
+3. Once effective, the remote can `ping 192.168.31.x` to directly reach home
+   LAN devices (via direct tunnel, roughly 10-70 ms)
 
-## 关键配置 3：系统 / WiFi 基础优化
+## Key configuration 3: system / WiFi basic optimisation
 
-- 时区：`Asia/Shanghai`（CST-8），NTP 用阿里/腾讯国内源
-- DNS：保持运营商上游，不启用 MagicDNS
-- WiFi：双频统一 SSID `猪猪之家`，WPA2/WPA3-PSK；2.4G 信道 1/HE20，5G 信道 149(实际 153)/HE80，country=`CN`，Tx 28dBm
-- 默认防火墙 wan zone `input=REJECT`，公网无法访问 80/443/22
+- Time zone: `Asia/Shanghai` (CST-8), NTP using domestic (Alibaba/Tencent)
+  sources
+- DNS: keep the ISP upstream, do not enable MagicDNS
+- WiFi: dual-band unified SSID `ZhuZhu Home`, WPA2/WPA3-PSK; 2.4G channel
+  1/HE20, 5G channel 149 (actually 153)/HE80, country=`CN`, Tx 28 dBm
+- Default firewall wan zone `input=REJECT`: the public internet cannot access
+  ports 80/443/22
 
-## 使用方式
+## Usage
 
-- 组网内任何节点访问本机：`ssh root@100.104.191.81`
-- 远端访问家庭局域网设备：`ssh root@192.168.31.x` 或直接访问 `192.168.31.x`（需子网路由已审批 + 客户端 accept-routes）
-- 因 MagicDNS 关闭，一律使用 IP。
+- Any node in the network accessing this device: `ssh root@100.104.191.81`
+- Remote access to home LAN devices: `ssh root@192.168.31.x` or browse
+  `192.168.31.x` directly (requires subnet route approval + client
+  accept-routes)
+- Because MagicDNS is off, always use IP addresses.
 
-## 常用命令（本机）
+## Useful commands (on this device)
 
 ```sh
-tailscale status                       # 组网状态
-tailscale ping 100.104.191.81        # 控制面连通性
-tailscale debug prefs | grep -i corp  # 确认 MagicDNS 关闭
-tailscale debug prefs | grep -iA1 AdvertiseRoutes  # 确认通告子网
+tailscale status                       # network status
+tailscale ping 100.104.191.81        # control-plane connectivity
+tailscale debug prefs | grep -i corp  # confirm MagicDNS is off
+tailscale debug prefs | grep -iA1 AdvertiseRoutes  # confirm advertised subnet
 /etc/init.d/tailscale restart
 /etc/init.d/firewall reload
 ```
 
-## 交接要点 / 坑
+## Handover points / pitfalls
 
-- **单臂访问光猫的 IP 必须绑 `wan`**，不是 `eth0`；且 `Modem` 接口**不要配 gateway**（会抢默认路由）。
-- **ICMP 被拒 ≠ SSH 被拒**：本机 SSH 正常但 ping 报 `Destination Port Unreachable` 是 fw4 兜底，
-  需 `tailscale0` zone 或 include 脚本放行 input。
-- **不要**改动 `CorpDNS` 开启 MagicDNS（需求要求关闭）。
-- 子网通告需**控制台审批** + **远端 accept-routes**，缺一不可。
-- WAN 断线会导致无默认路由、DNS 失败、Tailscale 无法登录控制面（`tailscale status` 显示 logged out）。
-  先保证 WAN 有链路；`procd respawn` 保证 tailscaled 崩溃自启。
-- **root 密码**务必设置：局域网内设备可直接 SSH 登录（公网已被 wan zone REJECT 挡住）。
+- **The single-arm modem access IP must be bound to `wan`**, not `eth0`; and
+  the `Modem` interface must **not** have a gateway configured (it would steal
+  the default route).
+- **ICMP blocked ≠ SSH blocked**: SSH works fine but ping shows
+  `Destination Port Unreachable` because of the fw4 fallback; the `tailscale0`
+  zone or an include script needs to allow input.
+- Do **not** enable MagicDNS by changing `CorpDNS` (the requirements specify
+  it must be off).
+- Subnet advertisement needs **console approval** + **remote accept-routes**;
+  both are required.
+- WAN disconnection causes no default route, DNS failure, and Tailscale losing
+  its control-plane connection (`tailscale status` shows logged out). Ensure
+  the WAN has a link first; `procd respawn` ensures tailscaled restarts after
+  a crash.
+- The **root password** must be set: LAN devices can SSH in directly (the
+  public internet is blocked by the wan zone REJECT).
 
-## 与办公室节点互连
+## Office node interconnection
 
-- 本机 `xiaomi-ax3000t`（100.104.191.81，家中）与办公室 `dev`（100.95.46.79，Ubuntu）
-  同账号组网，`tailscale ping` 直连约 10ms。
-- 办公室 `dev` 已开 accept-routes，可从办公室访问家庭 `192.168.31.x` 实测通（路由器 11ms、局域网 Mac 65ms）。
+- This device `xiaomi-ax3000t` (100.104.191.81, at home) and the office `dev`
+  (100.95.46.79, Ubuntu) are on the same network; `tailscale ping` direct
+  connection is about 10 ms.
+- The office `dev` has accept-routes enabled; accessing the home `192.168.31.x`
+  from the office was tested and works (router 11 ms, LAN Mac 65 ms).
 
-## 已知限制
+## Known limitations
 
-- 远端访问家庭 LAN 内其它设备需子网路由审批 + 客户端 accept-routes（已在本机与办公室 `dev` 验证）。
-- 依赖家庭网络链路正常；WAN 掉线即失去外部可达性。
+- Remote access to other devices in the home LAN requires subnet route approval
+  plus client accept-routes (verified from this device and the office `dev`).
+- Depends on the home network link being up; WAN disconnection means loss of
+  external reachability.
