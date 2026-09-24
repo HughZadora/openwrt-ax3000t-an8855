@@ -1,0 +1,148 @@
+#!/bin/sh
+# Publish locally built firmware as one immutable GitHub Release.
+#
+# This is the supported release path now that automatic GitHub Actions
+# firmware builds are retired: firmware is compiled locally with
+# `scripts/build-firmware` for both channels, then published from here.
+#
+#   scripts/build-firmware --channel main
+#   scripts/build-firmware --channel openwrt-24.10
+#   scripts/publish-release                 # tag = current UTC month (vYY.MM)
+#   scripts/publish-release --tag v26.09    # explicit tag
+#   scripts/publish-release --dry-run       # verify inputs, publish nothing
+#
+# Publishing is refused when the tag already exists: releases are immutable
+# and are never overwritten. The release target is the repository commit
+# recorded in the build manifests, so provenance stays exact.
+set -eu
+
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
+    echo "error: not inside a git repository" >&2
+    exit 1
+}
+cd "$ROOT"
+
+TAG=""
+DRY_RUN=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --tag) TAG="${2:?--tag needs a value}"; shift 2 ;;
+        --tag=*) TAG="${1#*=}"; shift ;;
+        --dry-run) DRY_RUN=1; shift ;;
+        -h|--help) awk 'NR>1 && /^#/ { sub(/^# ?/, ""); print; next } NR>1 { exit }' "$0"; exit 0 ;;
+        *) echo "error: unknown argument: $1 (see --help)" >&2; exit 1 ;;
+    esac
+done
+
+: "${TAG:=v$(date -u +%y.%m)}"
+
+CHANNELS="main openwrt-24.10"
+STAGE="$ROOT/build/release-$TAG"
+
+command -v gh >/dev/null || { echo "error: gh CLI is required" >&2; exit 1; }
+gh auth status >/dev/null 2>&1 || { echo "error: gh is not authenticated" >&2; exit 1; }
+
+manifest_field() { # manifest_field FILE FIELD
+    grep -o "\"$2\": *\"[^\"]*\"" "$1" | head -n1 | sed 's/.*: *"//; s/"$//'
+}
+
+# ---- collect + verify channel artifacts -----------------------------
+rm -rf "$STAGE"
+mkdir -p "$STAGE"
+
+REPO_SHA=""
+for ch in $CHANNELS; do
+    out="$ROOT/build/out-$ch"
+    if [ ! -d "$out" ]; then
+        echo "error: no build output for $ch ($out)" >&2
+        echo "       run: scripts/build-firmware --channel $ch" >&2
+        exit 1
+    fi
+
+    factory=$(find "$out" -maxdepth 1 -name "$ch-*-initramfs-factory.ubi" -print -quit)
+    sysupgrade=$(find "$out" -maxdepth 1 -name "$ch-*-squashfs-sysupgrade.bin" -print -quit)
+    clash=$(find "$out" -maxdepth 1 \( -name "$ch-*openclash*.apk" -o -name "$ch-*openclash*.ipk" \) -print -quit)
+    manifest="$out/build-manifest.json"
+
+    for f in "$factory" "$sysupgrade" "$clash" "$manifest"; do
+        [ -n "$f" ] && [ -f "$f" ] || {
+            echo "error: $ch artifact missing under $out" >&2
+            echo "       expected factory.ubi, sysupgrade.bin, OpenClash package and build-manifest.json" >&2
+            exit 1
+        }
+    done
+
+    sha=$(manifest_field "$manifest" repo_sha)
+    [ -n "$sha" ] || { echo "error: $manifest has no repo_sha" >&2; exit 1; }
+    if [ -z "$REPO_SHA" ]; then
+        REPO_SHA=$sha
+    elif [ "$REPO_SHA" != "$sha" ]; then
+        echo "error: channels were built from different repository commits" >&2
+        echo "       $REPO_SHA vs $sha; rebuild both channels from one commit" >&2
+        exit 1
+    fi
+
+    cp "$factory" "$sysupgrade" "$clash" "$STAGE/"
+    cp "$manifest" "$STAGE/manifest-$ch.json"
+    echo "ok: $ch assets staged ($(manifest_field "$manifest" upstream_sha))"
+done
+
+git cat-file -e "$REPO_SHA^{commit}" 2>/dev/null || {
+    echo "error: build commit $REPO_SHA is not present in this repository" >&2
+    exit 1
+}
+
+(cd "$STAGE" && sha256sum ./* > SHA256SUMS.txt)
+
+# ---- immutability ---------------------------------------------------
+if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null 2>&1 \
+    || gh release view "$TAG" >/dev/null 2>&1; then
+    echo "error: release/tag $TAG already exists; releases are immutable" >&2
+    exit 1
+fi
+
+# ---- notes ----------------------------------------------------------
+NOTES=$(mktemp)
+trap 'rm -f "$NOTES"' EXIT
+{
+    echo "## $TAG — dual-channel firmware"
+    echo
+    echo "Built locally with \`scripts/build-firmware\` and published from the"
+    echo "maintainer workstation. **Built does not mean physically accepted**:"
+    echo "flash only firmware that passed the manual acceptance contract below"
+    echo "on your own hardware."
+    echo
+    echo "### Build provenance"
+    echo
+    for ch in $CHANNELS; do
+        up=$(manifest_field "$STAGE/manifest-$ch.json" upstream_sha)
+        echo "- \`$ch\`: upstream \`$up\`, repo \`$REPO_SHA\`"
+    done
+    echo
+    echo "### Manual physical acceptance (required before flashing)"
+    echo
+    echo "- [ ] initramfs boot"
+    echo "- [ ] LAN/WAN sanity"
+    echo "- [ ] persistent sysupgrade"
+    echo "- [ ] reboot persistence"
+    echo "- [ ] Wi-Fi sanity"
+    echo "- [ ] required services/packages"
+    echo "- [ ] Tailscale path if included"
+    echo "- [ ] known-good recovery path ready"
+    echo
+    echo "> Hardware warning: AN8855 single-UBI layout only. Do not flash"
+    echo "> unrelated AX3000T variants."
+} >"$NOTES"
+
+if [ "$DRY_RUN" -eq 1 ]; then
+    echo "dry run: would publish $TAG (target $REPO_SHA) with:"
+    ls -1 "$STAGE"
+    exit 0
+fi
+
+# ---- publish --------------------------------------------------------
+gh release create "$TAG" "$STAGE"/* \
+    --title "$TAG" \
+    --target "$REPO_SHA" \
+    --notes-file "$NOTES"
+echo "published: $(gh release view "$TAG" --json url -q .url)"

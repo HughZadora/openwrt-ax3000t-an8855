@@ -1,0 +1,216 @@
+#!/bin/bash
+# ============================================================
+# Repository-native firmware build contract (issue #17 §2).
+#
+# One entrypoint used by Linux local execution and GitHub Actions:
+#
+#   scripts/build-firmware --channel main
+#   scripts/build-firmware --channel openwrt-24.10
+#
+# Stages: resolve -> prepare -> build -> validate -> record.
+# --prepare-only stops after defconfig: it validates the channel contract
+# (SHA resolution, patch application, feeds, config) without compiling and
+# needs only git/patch/standard shell -- no OpenWrt toolchain.
+#
+# Conventions:
+#   --source-dir DIR   upstream tree location (default ./build/upstream-<channel>)
+#   --output-dir DIR   collected assets + manifest (default ./build/out-<channel>)
+#   --jobs N           make parallelism (default nproc)
+#   --upstream-sha SHA exact upstream SHA (default: static lock for main,
+#                      floating branch HEAD otherwise)
+# Upstream source/build trees are generated state (see .gitignore).
+# ============================================================
+
+set -euo pipefail
+
+CHANNEL=""
+SOURCE_DIR=""
+OUTPUT_DIR=""
+JOBS="$(nproc 2>/dev/null || echo 4)"
+UPSTREAM_SHA_ARG=""
+PREPARE_ONLY=0
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --channel) CHANNEL="${2:?--channel needs main or openwrt-24.10}"; shift 2 ;;
+        --channel=*) CHANNEL="${1#*=}"; shift ;;
+        --source-dir) SOURCE_DIR="$2"; shift 2 ;;
+        --source-dir=*) SOURCE_DIR="${1#*=}"; shift ;;
+        --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
+        --output-dir=*) OUTPUT_DIR="${1#*=}"; shift ;;
+        --jobs) JOBS="$2"; shift 2 ;;
+        --jobs=*) JOBS="${1#*=}"; shift ;;
+        --upstream-sha) UPSTREAM_SHA_ARG="$2"; shift 2 ;;
+        --upstream-sha=*) UPSTREAM_SHA_ARG="${1#*=}"; shift ;;
+        --prepare-only) PREPARE_ONLY=1; shift ;;
+        -h|--help)
+            sed -n '2,/^# ===/p' "$0" | sed 's/^# \{0,1\}//'
+            exit 0 ;;
+        *) echo "unknown argument: $1 (see --help)" >&2; exit 1 ;;
+    esac
+done
+
+case "$CHANNEL" in
+    main) UPSTREAM_BRANCH="main"; PATCH_DIR="main" ;;
+    openwrt-24.10) UPSTREAM_BRANCH="openwrt-24.10"; PATCH_DIR="24.10" ;;
+    *) echo "error: --channel must be 'main' or 'openwrt-24.10'" >&2; exit 1 ;;
+esac
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+: "${SOURCE_DIR:=$ROOT/build/upstream-$CHANNEL}"
+: "${OUTPUT_DIR:=$ROOT/build/out-$CHANNEL}"
+UPSTREAM_URL="https://git.openwrt.org/openwrt/openwrt.git"
+OPENCLASH_URL="https://github.com/vernesong/OpenClash.git"
+DEVICE_COMPAT="xiaomi,mi-router-ax3000t-an8855"
+DEVICE_MK="xiaomi_mi-router-ax3000t-an8855"
+
+log() { printf '[build-firmware:%s] %s\n' "$CHANNEL" "$*"; }
+die() { printf '[build-firmware:%s] ERROR: %s\n' "$CHANNEL" "$*" >&2; exit 1; }
+
+command -v git >/dev/null || die "git is required"
+command -v patch >/dev/null || die "patch is required"
+
+# ---- resolve -------------------------------------------------------
+# Default: the explicit static recovery lock (patches/VERIFIED_COMMIT) for
+# main, floating branch HEAD otherwise. Floating main drifts under downstream
+# patches, so reproducibility comes from the lock; --upstream-sha opts into
+# an exact newer SHA explicitly (dry-run still fails loud on drift).
+if [ -n "$UPSTREAM_SHA_ARG" ]; then
+    UPSTREAM_SHA="$UPSTREAM_SHA_ARG"
+    log "using explicit upstream SHA $UPSTREAM_SHA"
+elif [ "$CHANNEL" = "main" ] && LOCK_SHA="$(grep -vE '^\s*(#|$)' "$ROOT/patches/VERIFIED_COMMIT" 2>/dev/null | head -n1 | tr -d '[:space:]')" && [ -n "$LOCK_SHA" ]; then
+    UPSTREAM_SHA="$LOCK_SHA"
+    log "using static recovery lock for main: $UPSTREAM_SHA"
+else
+    log "resolving upstream branch $UPSTREAM_BRANCH to floating HEAD"
+    UPSTREAM_SHA="$(git ls-remote "$UPSTREAM_URL" "$UPSTREAM_BRANCH" | awk '{print $1}')"
+    [ -n "$UPSTREAM_SHA" ] || die "could not resolve upstream $UPSTREAM_BRANCH"
+fi
+case "$UPSTREAM_SHA" in
+    *[^0-9a-f]* | ??????) die "unexpected upstream SHA: $UPSTREAM_SHA" ;;
+esac
+REPO_SHA="$(git -C "$ROOT" rev-parse HEAD)"
+log "upstream $UPSTREAM_BRANCH = $UPSTREAM_SHA (repo $REPO_SHA)"
+
+# ---- prepare -------------------------------------------------------
+if [ -d "$SOURCE_DIR/.git" ]; then
+    log "reusing existing source tree $SOURCE_DIR"
+    git -C "$SOURCE_DIR" fetch --depth 1 origin "$UPSTREAM_BRANCH" 2>/dev/null || \
+        git -C "$SOURCE_DIR" fetch origin "$UPSTREAM_BRANCH" || \
+        die "fetch of $UPSTREAM_BRANCH failed"
+else
+    log "cloning upstream $UPSTREAM_BRANCH into $SOURCE_DIR"
+    mkdir -p "$(dirname "$SOURCE_DIR")"
+    git clone --depth 1 --branch "$UPSTREAM_BRANCH" --single-branch \
+        "$UPSTREAM_URL" "$SOURCE_DIR" || die "clone failed"
+fi
+if [ "$(git -C "$SOURCE_DIR" rev-parse HEAD)" != "$UPSTREAM_SHA" ]; then
+    git -C "$SOURCE_DIR" fetch --depth 1 origin "$UPSTREAM_SHA" || \
+        die "could not fetch resolved SHA $UPSTREAM_SHA"
+    git -C "$SOURCE_DIR" checkout --force "$UPSTREAM_SHA" || die "checkout failed"
+fi
+[ "$(git -C "$SOURCE_DIR" rev-parse HEAD)" = "$UPSTREAM_SHA" ] || \
+    die "source tree is not at resolved SHA"
+
+log "applying downstream deltas (patches/$PATCH_DIR + shared DTS)"
+DTS_SRC="$ROOT/patches/common/mt7981b-xiaomi-mi-router-ax3000t-an8855.dts"
+[ -f "$DTS_SRC" ] || die "shared DTS missing: $DTS_SRC"
+cp "$DTS_SRC" "$SOURCE_DIR/target/linux/mediatek/dts/" || die "DTS copy failed"
+if grep -q "Device/$DEVICE_MK" "$SOURCE_DIR/target/linux/mediatek/image/filogic.mk"; then
+    log "an8855 target already present, skipping patch application"
+else
+    for p in "$ROOT"/patches/"$PATCH_DIR"/*.patch; do
+        [ -f "$p" ] || die "no patches for channel $CHANNEL"
+        log "dry-run: $(basename "$p")"
+        patch -d "$SOURCE_DIR" -p1 --forward --dry-run -i "$p" || \
+            die "patch dry-run failed (upstream drifted): $(basename "$p")"
+    done
+    for p in "$ROOT"/patches/"$PATCH_DIR"/*.patch; do
+        patch -d "$SOURCE_DIR" -p1 --forward -i "$p" || \
+            die "patch application failed: $(basename "$p")"
+    done
+fi
+grep -q "Device/$DEVICE_MK" "$SOURCE_DIR/target/linux/mediatek/image/filogic.mk" || \
+    die "target $DEVICE_MK missing after patch"
+grep -q "$DEVICE_COMPAT" \
+    "$SOURCE_DIR/target/linux/mediatek/filogic/base-files/lib/upgrade/platform.sh" || \
+    die "upgrade entry $DEVICE_COMPAT missing after patch"
+log "downstream deltas applied and verified"
+
+log "updating feeds"
+cd "$SOURCE_DIR"
+[ -f feeds.conf ] || cp feeds.conf.default feeds.conf
+if ! grep -q "src-git openclash" feeds.conf; then
+    printf '# OpenClash feed\nsrc-git openclash %s\n' "$OPENCLASH_URL" >> feeds.conf
+fi
+./scripts/feeds update -a || die "feeds update failed"
+./scripts/feeds install -a || die "feeds install failed"
+
+log "seeding configuration"
+make defconfig >/dev/null || die "initial defconfig failed"
+bash "$ROOT/scripts/generate-config-seed.sh" || die "config seed failed"
+# Drop any choice lines the blind first defconfig baked in (e.g. a channel
+# default of COMPRESSION_NONE) so the seed is authoritative, then append.
+sed -i '/^CONFIG_TARGET_INITRAMFS_COMPRESSION[_=]/d; /^# CONFIG_TARGET_INITRAMFS_COMPRESSION.*is not set$/d' .config
+cat .config.seed >> .config
+rm -f .config.seed
+make defconfig || die "seeded defconfig failed"
+grep -q "^CONFIG_TARGET_INITRAMFS_COMPRESSION_XZ=y" .config || \
+    die "XZ initramfs compression not selected after defconfig"
+grep -q "CONFIG_TARGET_mediatek_filogic_DEVICE_xiaomi_mi-router-ax3000t-an8855=y" .config || \
+    die "an8855 device not selected after defconfig"
+
+log "injecting first-boot defaults"
+bash "$ROOT/scripts/inject-firstboot-defaults.sh" "$SOURCE_DIR" || die "firstboot inject failed"
+
+if [ "$PREPARE_ONLY" -eq 1 ]; then
+    log "prepare-only: contract validated (resolve+prepare+defconfig), no compilation"
+    log "upstream_sha=$UPSTREAM_SHA repo_sha=$REPO_SHA"
+    exit 0
+fi
+
+# ---- build ---------------------------------------------------------
+command -v make >/dev/null || die "make is required for the build stage"
+command -v gcc >/dev/null || die "gcc is required for the build stage"
+log "compiling firmware (jobs=$JOBS)"
+make -j"$JOBS" V=s 2>&1 | tee "$OUTPUT_DIR-build.log" || die "firmware build failed"
+
+log "compiling OpenClash package (channel-appropriate format)"
+make package/feeds/openclash/luci-app-openclash/compile V=s 2>&1 | tee -a "$OUTPUT_DIR-build.log" || \
+    die "OpenClash compile failed"
+
+# ---- validate + record ----------------------------------------------
+TARGET_DIR="$SOURCE_DIR/bin/targets/mediatek/filogic"
+[ -d "$TARGET_DIR" ] || die "target dir missing: $TARGET_DIR"
+STRICT=1 bash "$ROOT/scripts/check-image-size.sh" "$TARGET_DIR" || die "image size gate failed"
+
+FACTORY="$(find "$TARGET_DIR" -maxdepth 1 -type f -name "*an8855-initramfs-factory.ubi" -print -quit)"
+SYSUPGRADE="$(find "$TARGET_DIR" -maxdepth 1 -type f -name "*an8855-squashfs-sysupgrade.bin" -print -quit)"
+[ -n "$FACTORY" ] || die "factory image missing (wrong device built?)"
+[ -n "$SYSUPGRADE" ] || die "sysupgrade image missing (wrong device built?)"
+CLASH="$(find "$SOURCE_DIR/bin/packages" -type f \( -name 'luci-app-openclash*.apk' -o -name 'luci-app-openclash*.ipk' \) -print -quit)"
+[ -n "$CLASH" ] || die "OpenClash package missing"
+
+mkdir -p "$OUTPUT_DIR"
+cp "$FACTORY" "$OUTPUT_DIR/$CHANNEL-$(basename "$FACTORY")"
+cp "$SYSUPGRADE" "$OUTPUT_DIR/$CHANNEL-$(basename "$SYSUPGRADE")"
+cp "$CLASH" "$OUTPUT_DIR/$CHANNEL-$(basename "$CLASH")"
+(cd "$OUTPUT_DIR" && sha256sum ./* > SHA256SUMS.txt)
+
+BUILT_AT="$(date -u +%FT%TZ)"
+{
+    printf '{\n'
+    printf '  "channel": "%s",\n' "$CHANNEL"
+    printf '  "upstream_branch": "%s",\n' "$UPSTREAM_BRANCH"
+    printf '  "upstream_sha": "%s",\n' "$UPSTREAM_SHA"
+    printf '  "repo_sha": "%s",\n' "$REPO_SHA"
+    printf '  "built_at": "%s",\n' "$BUILT_AT"
+    printf '  "artifacts": [\n'
+    printf '    "%s",\n' "$CHANNEL-$(basename "$FACTORY")"
+    printf '    "%s",\n' "$CHANNEL-$(basename "$SYSUPGRADE")"
+    printf '    "%s"\n' "$CHANNEL-$(basename "$CLASH")"
+    printf '  ]\n}\n'
+} > "$OUTPUT_DIR/build-manifest.json"
+mv "$OUTPUT_DIR-build.log" "$OUTPUT_DIR/build.log"
+
+log "done: $(ls "$OUTPUT_DIR" | tr '\n' ' ')"

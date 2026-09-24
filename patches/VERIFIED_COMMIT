@@ -1,0 +1,21 @@
+# Static recovery lock for the upstream main channel (issue #17 §8).
+#
+# Ownership: this file is updated only through an intentional repository
+# change (exact SHA + patch dry-run + successful channel build). Normal CI
+# never commits to it; runs resolve the requested upstream branch to an
+# exact SHA and record it as run/release evidence instead.
+#
+# A known-good static lock remains useful as a recovery starting point when
+# floating main drifts. To advance it:
+#   1) resolve upstream main to an exact SHA;
+#   2) dry-run patches/main/*.patch plus the DTS copy against that SHA;
+#   3) complete a successful main-channel build from that SHA;
+# then write the SHA below with its verification note.
+#
+# Empty (comments only) means: follow floating main; patches may drift.
+#
+# Last verified: main @ 9f3157aa2ad5481de947bbfbba3e2eb065486a26,
+#   patch dry-run clean (2026-09-22); full-build proof via CI channel build.
+# Historical note (2026-08-15 tree): initramfs-kernel.bin (FIT) 24.9MB
+#   (limit 26MB); factory.ubi 27MB / sysupgrade.bin 28MB / OpenClash apk 7.8MB.
+9f3157aa2ad5481de947bbfbba3e2eb065486a26

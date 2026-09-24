@@ -1,0 +1,80 @@
+#!/bin/sh
+# Project-native validation for the AX3000T AN8855 firmware repository.
+set -eu
+
+fail=0
+
+pass() { printf 'ok: %s\n' "$1"; }
+fail_one() { printf 'FAIL: %s\n' "$1"; fail=1; }
+
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
+  printf 'FAIL: not inside a git repository\n'
+  exit 1
+}
+cd "$ROOT"
+
+for f in \
+  README.md \
+  AGENTS.md \
+  patches/README.md \
+  patches/VERIFIED_COMMIT \
+  patches/common/mt7981b-xiaomi-mi-router-ax3000t-an8855.dts \
+  patches/main/0001-add-an8855-target.patch \
+  patches/24.10/0001-add-an8855-target.patch \
+  scripts/build-firmware \
+  scripts/check-image-size.sh \
+  scripts/generate-config-seed.sh \
+  scripts/inject-firstboot-defaults.sh \
+  scripts/pull-request-check \
+  scripts/publish-release \
+  scripts/README.md \
+  .github/workflows/ci.yml \
+  .github/workflows/pull-request.yml
+do
+  if [ -f "$f" ]; then
+    pass "required file $f"
+  else
+    fail_one "missing required file $f"
+  fi
+done
+
+for s in \
+  scripts/build-firmware \
+  scripts/check-image-size.sh \
+  scripts/generate-config-seed.sh \
+  scripts/inject-firstboot-defaults.sh \
+  scripts/pull-request-check \
+  scripts/publish-release \
+  scripts/repository-check
+do
+  [ -f "$s" ] || continue
+  if sh -n "$s" 2>/dev/null || bash -n "$s" 2>/dev/null; then
+    pass "shell syntax $s"
+  else
+    fail_one "invalid shell syntax: $s"
+  fi
+done
+
+for workflow in .github/workflows/*.yml .github/workflows/*.yaml; do
+  [ -f "$workflow" ] || continue
+  unpinned=$(grep -E '^[[:space:]]*uses:[[:space:]]+[^./][^@[:space:]]+@' "$workflow" \
+    | grep -Ev '@[0-9a-fA-F]{40}([[:space:]]|$)' || true)
+  if [ -n "$unpinned" ]; then
+    fail_one "$workflow contains an unpinned external Action"
+  else
+    pass "$workflow external Actions are SHA-pinned"
+  fi
+done
+
+if git ls-files | grep -Eq '^(build|artifacts)/'; then
+  fail_one 'generated build/artifact output is tracked'
+else
+  pass 'generated build output is not tracked'
+fi
+
+if [ "$fail" -ne 0 ]; then
+  printf 'repository validation failed\n'
+  exit 1
+fi
+
+printf 'repository validation success\n'

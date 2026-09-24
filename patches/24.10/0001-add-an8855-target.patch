@@ -1,0 +1,65 @@
+diff --git i/target/linux/mediatek/filogic/base-files/etc/board.d/02_network w/target/linux/mediatek/filogic/base-files/etc/board.d/02_network
+index f2c38d59..9ce495a2 100644
+--- i/target/linux/mediatek/filogic/base-files/etc/board.d/02_network
++++ w/target/linux/mediatek/filogic/base-files/etc/board.d/02_network
+@@ -142,6 +142,7 @@ mediatek_setup_interfaces()
+ 		ucidef_set_interface_lan "lan1 lan2 eth1"
+ 		;;
+ 	xiaomi,mi-router-ax3000t|\
++	xiaomi,mi-router-ax3000t-an8855|\
+ 	xiaomi,mi-router-ax3000t-ubootmod|\
+ 	xiaomi,mi-router-wr30u-stock|\
+ 	xiaomi,mi-router-wr30u-ubootmod|\
+@@ -206,6 +207,7 @@ mediatek_setup_macs()
+ 		lan_mac=$(macaddr_add "$label_mac" 1)
+ 		;;
+ 	xiaomi,mi-router-ax3000t|\
++	xiaomi,mi-router-ax3000t-an8855|\
+ 	xiaomi,mi-router-ax3000t-ubootmod|\
+ 	xiaomi,mi-router-wr30u-stock|\
+ 	xiaomi,mi-router-wr30u-ubootmod|\
+diff --git i/target/linux/mediatek/filogic/base-files/lib/upgrade/platform.sh w/target/linux/mediatek/filogic/base-files/lib/upgrade/platform.sh
+index 8af61b02..75b2b8cc 100755
+--- i/target/linux/mediatek/filogic/base-files/lib/upgrade/platform.sh
++++ w/target/linux/mediatek/filogic/base-files/lib/upgrade/platform.sh
+@@ -129,7 +129,8 @@ platform_do_upgrade() {
+ 		nand_do_upgrade "$1"
+ 		;;
+ 	cudy,wr3000h-v1|\
+-	cudy,wr3000p-v1)
++	cudy,wr3000p-v1|\
++	xiaomi,mi-router-ax3000t-an8855)
+ 		CI_UBIPART="ubi"
+ 		nand_do_upgrade "$1"
+ 		;;
+diff --git i/target/linux/mediatek/image/filogic.mk w/target/linux/mediatek/image/filogic.mk
+index b7f8ffd4..21199188 100644
+--- i/target/linux/mediatek/image/filogic.mk
++++ w/target/linux/mediatek/image/filogic.mk
+@@ -1952,6 +1952,26 @@ endif
+ endef
+ TARGET_DEVICES += xiaomi_mi-router-ax3000t
+ 
++define Device/xiaomi_mi-router-ax3000t-an8855
++  DEVICE_VENDOR := Xiaomi
++  DEVICE_MODEL := Mi Router AX3000T (AN8855)
++  DEVICE_VARIANT := single UBI
++  DEVICE_DTS := mt7981b-xiaomi-mi-router-ax3000t-an8855
++  DEVICE_DTS_DIR := ../dts
++  UBINIZE_OPTS := -E 5
++  BLOCKSIZE := 128k
++  PAGESIZE := 2048
++  DEVICE_PACKAGES := kmod-mt7915e kmod-mt7981-firmware mt7981-wo-firmware
++ifeq ($(IB),)
++ifneq ($(CONFIG_TARGET_ROOTFS_INITRAMFS),)
++  ARTIFACTS := initramfs-factory.ubi
++  ARTIFACT/initramfs-factory.ubi := append-image-stage initramfs-kernel.bin | ubinize-kernel
++endif
++endif
++  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
++endef
++TARGET_DEVICES += xiaomi_mi-router-ax3000t-an8855
++
+ define Device/xiaomi_mi-router-ax3000t-ubootmod
+   DEVICE_VENDOR := Xiaomi
+   DEVICE_MODEL := Mi Router AX3000T (OpenWrt U-Boot layout)

@@ -1,0 +1,17 @@
+diff --git i/package/libs/libsepol/Makefile w/package/libs/libsepol/Makefile
+index b1a34d29..3aa41327 100644
+--- i/package/libs/libsepol/Makefile
++++ w/package/libs/libsepol/Makefile
+@@ -18,6 +18,12 @@ PKG_CPE_ID:=cpe:/a:selinuxproject:libsepol
+ 
+ PKG_BUILD_FLAGS:=no-lto
+ 
++# Downstream host-compat shim (see this repository's patches/README.md):
++# libsepol 3.5 predates C23 and fails on C23-default host compilers
++# (`uint32_t bool` in conditional.h). Restore its pre-C23 language
++# semantics for the host build only; target firmware flags untouched.
++HOST_CFLAGS += -std=gnu17
++
+ include $(INCLUDE_DIR)/package.mk
+ include $(INCLUDE_DIR)/host-build.mk
+ 

@@ -1,0 +1,41 @@
+name: CI
+
+# One control branch (`main`), two upstream source channels (OpenWrt `main` +
+# `openwrt-24.10`) selected explicitly -- never parallel long-lived repository
+# branches (issue #17).
+#
+# Firmware compilation does not run here. Automatic Actions firmware builds
+# are retired: the debug cycle was too long for the maintainer's workflow.
+# Firmware is built locally with `scripts/build-firmware` and published with
+# `scripts/publish-release`. CI keeps only the cheap project-native gates,
+# which finish in seconds on every PR and push.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    name: Repository gates (cheap)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+      - name: Project-native validation
+        run: ./scripts/repository-check
+      - name: Patch ledger consistency
+        run: |
+          set -eu
+          [ -f patches/README.md ]
+          [ -f patches/common/mt7981b-xiaomi-mi-router-ax3000t-an8855.dts ]
+          [ -f patches/main/0001-add-an8855-target.patch ]
+          [ -f patches/24.10/0001-add-an8855-target.patch ]
+          [ -f patches/VERIFIED_COMMIT ]
+      - name: Entrypoint contract
+        run: ./scripts/build-firmware --help | grep -q -- '--prepare-only'

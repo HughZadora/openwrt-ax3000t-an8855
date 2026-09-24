@@ -1,0 +1,46 @@
+#!/bin/sh
+# Validate the minimum contract for a non-trivial Pull Request.
+# Usage: scripts/pull-request-check BODY_FILE
+set -eu
+
+fail=0
+
+fail_one() {
+  printf 'FAIL: %s\n' "$1"
+  fail=1
+}
+
+[ "$#" -eq 1 ] || {
+  printf 'Usage: scripts/pull-request-check BODY_FILE\n' >&2
+  exit 2
+}
+
+BODY=$1
+[ -f "$BODY" ] || {
+  printf 'FAIL: Pull Request body file not found: %s\n' "$BODY" >&2
+  exit 1
+}
+
+if grep -Eiq '(close[sd]?|fix(e[sd])?|resolve[sd]?|refs?)[[:space:]]+#[0-9]+' "$BODY"; then
+  printf 'ok: Pull Request references an Issue\n'
+else
+  fail_one 'Pull Request must reference an Issue (for example: Closes #123)'
+fi
+
+if grep -Eiq '^##[[:space:]]+Summary[[:space:]]*$' "$BODY"; then
+  printf 'ok: Pull Request has a Summary section\n'
+else
+  fail_one 'Pull Request must have a ## Summary section'
+fi
+
+if grep -Eiq '^##[[:space:]]+Validation[[:space:]]*$' "$BODY"; then
+  printf 'ok: Pull Request has a Validation section\n'
+else
+  fail_one 'Pull Request must have a ## Validation section'
+fi
+
+if [ "$fail" -ne 0 ]; then
+  printf 'Pull Request contract failed\n'
+  exit 1
+fi
+printf 'Pull Request contract passed\n'

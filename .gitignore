@@ -1,0 +1,22 @@
+# Local build state: upstream source, build trees, collected outputs.
+/build/
+
+# Downloaded artifacts kept for local verification.
+firmware-*/
+
+# Agent harness local state.
+.pi/
+
+# Editor and OS temporary files.
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Logs.
+*.log
+build.log
+
+# Firmware binaries are release/build outputs, not source state.
+*.bin
+*.img
